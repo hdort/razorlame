@@ -1649,9 +1649,19 @@ begin
 
     //-- construct command line
     if aOperation = poEncode then
-      lsCmd := ExpandFileName(Global.Encoder) + GetOptionString
-        + ' "' + ListViewFiles.Items[0].SubItems[0]
-        + ListViewFiles.Items[0].Caption + '" "'
+    begin
+      //-- Mantis #36: Better support for LameAPE
+      if (ExtractFileExt(ListViewFiles.Items[0].SubItems[0]) = '.ape')
+        and (Pos('--apeinput', GetOptionString) = 0) then
+          lsCmd := ExpandFileName(Global.Encoder) + GetOptionString
+            + '--apeinput'
+            + ' "' + ListViewFiles.Items[0].SubItems[0]
+            + ListViewFiles.Items[0].Caption + '" "'
+      else
+        lsCmd := ExpandFileName(Global.Encoder) + GetOptionString
+          + ' "' + ListViewFiles.Items[0].SubItems[0]
+          + ListViewFiles.Items[0].Caption + '" "';
+    end
     else
       lsCmd := ExpandFileName(Global.Encoder) + ' --decode'
         + ' "' + ListViewFiles.Items[0].SubItems[0]
