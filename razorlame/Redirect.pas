@@ -17,6 +17,12 @@ unit Redirect;
   Those were done in order to get the "sometimes missing average problem"
   solved, however, I think I've solved this now with a change in main.pas,
   so perhaps those last changes aren't really necessary at all!!
+
+  2005-02-27: added "sleep(10)" in TRedirectorThread.Execute thread. Should
+              speed up processing when called with anything other than
+              SW_SHOWNORMAL.
+              Thanks to Jos Wolters for pointing this out!
+
 }
 
 interface
@@ -507,6 +513,7 @@ begin
   FreeOnTerminate := true;
   repeat
     Idle := true;
+    Sleep(10);
 
     //-- check for StdOutout-Pipe
     if PeekNamedPipe(FRedirector.FPipeOutput.hRead, nil, 0, nil,
