@@ -214,6 +214,7 @@ begin
     CheckBoxVBRDisableTag.Checked := VBRDisableTag;
     CheckBoxVBRStrictMin.Checked := VBRStrictMin;
     CheckBoxVBRUseABR.Checked := VBRUseABR;
+    SpinEditVBRABRTargetBitrate.Enabled := CheckBoxVBRUseABR.Checked;
     SpinEditVBRABRTargetBitrate.Value := VBRABRTargetBitrate;
 
     //-- Output Directory

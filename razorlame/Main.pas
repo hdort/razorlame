@@ -93,7 +93,6 @@ type
     MenuItemIcons: TMenuItem;
     MenuItemCaptions: TMenuItem;
     MenuItemBoth: TMenuItem;
-    TrayIcon: TTrayIcon;
     ActionDecode: TAction;
     Decode1: TMenuItem;
     Decode2: TMenuItem;
@@ -213,8 +212,10 @@ type
     procedure FinishPreview;
     procedure CalculateBatchPercent;
     procedure SetupGlobals;
+    function DetermineOutputPath(const asInputFilePath: string): string;
   public
     { Public declarations }
+    TrayIcon: TTrayIcon;
   end;
 
 var
@@ -242,6 +243,17 @@ begin
 
   //-- create controls
   Redirector := TRedirector.Create;
+  TrayIcon := TTrayIcon.Create(Self);
+  with TrayIcon do
+  begin
+    //Name := 'TrayIcon';
+    Active := False;
+    Animate := False;
+    ShowDesigning := False;
+    MinimizeApp := False;
+    OnDblClick := TrayIconDblClick;
+    PopupMenu := PopupMenuTray;
+  end;
 
   //-- init controls
   ListViewFiles.FullDrag := true; //-- allow moving of columns {todo: this screws up the headings!?}
@@ -334,6 +346,7 @@ end;
 
 procedure TFormMain.FormCloseQuery(Sender: TObject; var CanClose: Boolean);
 begin
+  //todo: ask if to stop encoding! (alternative: minimize to tray if working!)
   if Redirector.Running then Redirector.Terminate(0); {TODO: Check if 0 is correct code!}
 end;
 
@@ -538,11 +551,8 @@ begin
   begin
     if ListViewFiles.Items[i].Subitems[6] <> ID_WAITING then COntinue;
 
-    if (Trim(MP3Settings.OutDir) <> '') and DirectoryExists(MP3Settings.OutDir) then
-      lsFile := MP3Settings.OutDir
-    else
-      lsFile := ListViewFiles.Items[i].SubItems[0];
-    lsFile := lsFile + ChangeFileExt(ListViewFiles.Items[i].Caption, asExtension);
+    lsFile := DetermineOutputPath(ListViewFiles.Items[i].SubItems[0])
+      + ChangeFileExt(ListViewFiles.Items[i].Caption, asExtension);
 
     //-- does this file already exist?
     if FileExists(lsFile) then
@@ -690,6 +700,8 @@ begin
   ActionPreview.Enabled := (not Redirector.Running) and (ListViewFiles.SelCount > 0);
   ActionRequeue.Enabled := ListViewFiles.SelCount > 0;
   ActionRemove.Enabled := ListViewFiles.SelCount > 0;
+
+  ActionLameOptions.Enabled := (not Redirector.Running);
 
   MenuItemViewToolbarDisplay.Enabled := ActionToolbar.Checked;
 
@@ -1476,7 +1488,8 @@ begin
 
   {update progress only once per second!  if in tray, only once per 10 seconds!!}
   ldtDiff := Now - Global.LastStatusUpdate;
-  if Global.StatusMessages and (ldtDiff < (1 / (24 * 60 * 60))) then
+  //-- we have to make sure that we'll get the very last messages of LAME, as there are infos there we'd like to show!
+  if not Redirector.LastData and Global.StatusMessages and (ldtDiff < (1 / (24 * 60 * 60))) then  
   begin
 {$IFDEF DETAIL_DEBUG}
     Global.Log.Add('Exiting at Time Threshold 1');
@@ -1484,7 +1497,7 @@ begin
     exit;
   end;
 
-  if Global.StatusMessages and TrayIcon.Active and (ldtDiff < 10 / (24 * 60 * 60)) then
+  if not Redirector.LastData and Global.StatusMessages and TrayIcon.Active and (ldtDiff < 10 / (24 * 60 * 60)) then
     exit;
 
   Global.LastStatusUpdate := Now;
@@ -1542,6 +1555,13 @@ begin
         DeleteFile(Global.CurrentFileFullname);
 
       DisplayCurrentFileStatus(ID_DONE);
+
+      //-- print out last BR histogram
+      if Global.BRHistogram.Count > 0 then
+      begin
+        Global.Log.AddStrings(Global.BRHistogram);
+      end;
+
       //-- add a nice summary line! (if we have one!)
       lsSamples := Trim(Copy(Global.LastLine, 8, 6));
       if StrToIntDef(lsSamples, -1) > 0 then
@@ -1555,12 +1575,6 @@ begin
         else
           Global.Log.Add(Format('Encoded %s samples in %s (CPU: %s) (%s x)',
             [lsSamples, lsTime, lsCPU, lsSpeed]));
-      end;
-
-      //-- print out last BR histogram
-      if Global.BRHistogram.Count > 0 then
-      begin
-        Global.Log.AddStrings(Global.BRHistogram);
       end;
 
       //-- we have to check if this was the last file in the batch,
@@ -1591,11 +1605,8 @@ begin
       Global.ErrorOccurredInBatch := true;
       Inc(Global.FilesWithErrors);
       //-- Delete 0 byte files after an error occurred
-      if (Trim(MP3Settings.OutDir) <> '') and DirectoryExists(MP3Settings.OutDir) then
-        lsFile := MP3Settings.OutDir
-      else
-        lsFile := ExtractFilePath(Global.CurrentFileFullname);
-      lsFile := lsFile + ChangeFileExt(ExtractFilename(Global.CurrentFileFullname), '.mp3');
+      lsFile := DetermineOutputPath(ExtractFilePath(Global.CurrentFileFullname))
+        + ChangeFileExt(ExtractFilename(Global.CurrentFileFullname), '.mp3');
       DeleteZeroByteFile(lsFile);
 
       //-- add a note about the error
@@ -1848,11 +1859,7 @@ begin
         + ' "' + ListViewFiles.Items[k].SubItems[0]
         + ListViewFiles.Items[k].Caption + '" "';
 
-
-    if (Trim(MP3Settings.OutDir) <> '') and DirectoryExists(MP3Settings.OutDir) then
-      Global.CurrentOutputFile := MP3Settings.OutDir
-    else
-      Global.CurrentOutputFile := ListViewFiles.Items[k].SubItems[0];
+    Global.CurrentOutputFile := DetermineOutputPath(ListViewFiles.Items[k].SubItems[0]);
     if aOperation = poEncode then
     begin
       if Global.DefaultEncoder = Global.FAACEncoder then
@@ -1961,11 +1968,8 @@ begin
       Global.ErrorOccurredInBatch := true;
       Inc(Global.FilesWithErrors);
       //-- Delete 0 byte files after an error occurred
-      if (Trim(MP3Settings.OutDir) <> '') and DirectoryExists(MP3Settings.OutDir) then
-        lsFile := MP3Settings.OutDir
-      else
-        lsFile := ExtractFilePath(Global.CurrentFileFullname);
-      lsFile := lsFile + ChangeFileExt(ExtractFilename(Global.CurrentFileFullname), '.wav');
+      lsFile := DetermineOutputPath(ExtractFilePath(Global.CurrentFileFullname))
+        + ChangeFileExt(ExtractFilename(Global.CurrentFileFullname), '.wav');
       DeleteZeroByteFile(lsFile);
 
       //-- add a note about the error
@@ -2043,13 +2047,10 @@ begin
   Result := false; //-- assume worst-case
   for i := 0 to ListViewFiles.Items.Count - 1 do
   begin
-    if ListViewFiles.Items[i].Subitems[6] <> ID_WAITING then COntinue;
+    if ListViewFiles.Items[i].Subitems[6] <> ID_WAITING then Continue;
 
-    if (Trim(MP3Settings.OutDir) <> '') and DirectoryExists(MP3Settings.OutDir) then
-      lsFile := MP3Settings.OutDir
-    else
-      lsFile := ListViewFiles.Items[i].SubItems[0];
-    lsFile := lsFile + ChangeFileExt(ListViewFiles.Items[i].Caption, asExtension);
+    lsFile := DetermineOutputPath(ListViewFiles.Items[i].SubItems[0])
+      + ChangeFileExt(ListViewFiles.Items[i].Caption, asExtension);
 
     //-- is input = output file?
     if lsFile = ListViewFiles.Items[i].SubItems[0] + ListViewFiles.Items[i].Caption then
@@ -2447,6 +2448,14 @@ begin
     ListViewFiles.Items[i].Selected := true;
 
   ListViewFiles.Items[ListViewFiles.Items.Count - 1].Focused := true;
+end;
+
+function TFormMain.DetermineOutputPath(const asInputFilePath: string): string;
+begin
+  Result := asInputFilePath;
+  if MP3Settings.UseInputDir then exit;
+  if (Trim(MP3Settings.OutDir) <> '') and DirectoryExists(MP3Settings.OutDir) then
+    Result := MP3Settings.OutDir
 end;
 
 end.
