@@ -36,6 +36,8 @@
 19=Warning: many decoders cannot handle free format bitstreams
 20=+ Modification for 
 21=#20#20#20#20Available at 
+22=ID3v2 found. Be aware that the ID3 tag is currently lost when transcoding.
+23=bitstream problem: resyncing...
 
 [DecodeInfoMsgs]
 1=skipping#20
