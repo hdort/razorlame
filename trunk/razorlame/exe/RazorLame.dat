@@ -44,6 +44,8 @@
 4=Xing VBR header detected.#20
 5=#09(
 6=Input file is freeformat.
+7=bitstream problem: resyncing...
+8=ID3v2 found. Be aware that the ID3 tag is currently lost when transcoding.
 
 [InputFileTypes]
 Audio-Files=*.wav;*.aif;*.aiff;*.mp3;*.mp2;*.mp1;*.ape
