@@ -1,4 +1,4 @@
-(* (c) Copyright 2000, 2001 - Holger Dors
+(* (c) Copyright 2000-2005  -  Holger Dors
    =======================================
 
    This file is part of RazorLame,
