@@ -1,0 +1,31 @@
+1 VERSIONINFO LOADONCALL MOVEABLE DISCARDABLE IMPURE
+FILEVERSION 1,2,0,983
+PRODUCTVERSION 1,2,0,983
+FILEOS VOS__WINDOWS32
+FILETYPE VFT_APP
+{
+ BLOCK "StringFileInfo"
+ {
+  BLOCK "040904E4"
+  {
+   VALUE "CompanyName", "\000"
+   VALUE "FileDescription", "A front-end for lame.exe\000"
+   VALUE "FileVersion", "1.2.0.983\000"
+   VALUE "ProductVersion", "1.2.0.983\000"
+   VALUE "InternalName", "RazorLame.dpr\000"
+   VALUE "OriginalFilename", "RazorLame\000"
+   VALUE "LegalCopyright", "Copyright © Copyright © Holger Dors\000"
+   VALUE "ProductName", "RazorLame\000"
+   VALUE "LegalTrademarks", "All rights reserved\000"
+   VALUE "Author", "Holger Dors\000"
+   VALUE "BuildType", "ReleaseBuild\000"
+   VALUE "BuildTimestamp", "18.02.2001 15:31:50\000"
+   VALUE "InternalVersion", "0.8\000"
+   VALUE "VCS", "FreeVCS 2.2.0.0 http://www.freevcs.de\000"
+  }
+ }
+ BLOCK "VarFileInfo"
+ {
+  VALUE "Translation", 0x0409,1252
+ }
+}

@@ -45,12 +45,17 @@ type
     ImageHistogram: TImage;
     Splitter: TSplitter;
     LabelVersion: TLabel;
+    ButtonPause: TButton;
+    ButtonSkip: TButton;
     procedure FormCreate(Sender: TObject);
     procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
     procedure ButtonTrayClick(Sender: TObject);
     procedure ButtonHistogramClick(Sender: TObject);
     procedure FormResize(Sender: TObject);
     procedure SplitterMoved(Sender: TObject);
+    procedure ButtonPauseClick(Sender: TObject);
+    procedure ButtonCancelClick(Sender: TObject);
+    procedure ButtonSkipClick(Sender: TObject);
   private
     { Private declarations }
     procedure ResetFormControls;
@@ -58,6 +63,7 @@ type
   public
     { Public declarations }
     ExternalClosed: Boolean;
+    SkipRequest: Boolean;
     procedure DrawHistogram;
   end;
 
@@ -98,6 +104,7 @@ begin
   ProgressBarBatch.Max := 1000;
   ResetFormControls;
   ExternalClosed := false;
+  SkipRequest := false;
 end;
 
 procedure TFormProgress.FormCloseQuery(Sender: TObject;
@@ -108,6 +115,7 @@ begin
   CanClose := true;
   if not ExternalClosed then
   begin
+    ModalResult := mrCancel;
     liResult := MyMsgDlg(MSG_ABORTENCODING, MSG_QUESTION, mtConfirmation,
       mbYesNoCancel, [BTN_NOW, BTN_DONE]);
 
@@ -120,11 +128,11 @@ begin
     //-- the messagebox, close the form anyway,
     //-- no matter what the user answered to the question
     if ExternalClosed then
-    begin
       CanClose := true;
-      ModalResult := mrCancel;
-    end;
   end;
+
+  if CanClose then
+    PostMessage(FormMain.handle, WM_PROGRESS_CLOSING, Integer(ModalResult = mrOK), 0);
 end;
 
 procedure TFormProgress.ButtonTrayClick(Sender: TObject);
@@ -232,6 +240,31 @@ end;
 procedure TFormProgress.SplitterMoved(Sender: TObject);
 begin
   DrawHistogram;
+end;
+
+procedure TFormProgress.ButtonPauseClick(Sender: TObject);
+begin
+  if ButtonPause.Caption = 'Pause' then
+  begin
+    ButtonPause.Caption := 'Resume';
+    FormMain.SuspendLame(TRUE);
+  end
+  else
+  begin
+    ButtonPause.Caption := 'Pause';
+    FormMain.SuspendLame(FALSE);
+  end;
+end;
+
+
+procedure TFormProgress.ButtonCancelClick(Sender: TObject);
+begin
+  Close;
+end;
+
+procedure TFormProgress.ButtonSkipClick(Sender: TObject);
+begin
+  SkipRequest := true;
 end;
 
 end.

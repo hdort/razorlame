@@ -24,6 +24,7 @@ procedure ReadLameOptions(const asFilename: string);
 
 type
   TShutdownFlag = (sfClose, sfShutdown, sfLogOff, sfRestart, sfHibernate, sfSuspend);
+
 procedure ShutdownWindows(how: TShutdownFlag);
 
 procedure StoreInIni(const asSection, asItem: string; const aiValue: Integer); overload;
@@ -47,6 +48,9 @@ function DeleteZeroByteFile(const FileName: string): Boolean;
 function CreateFilterFromStringList(List: TStringList): string;
 function IsExtensionAllowed(const asExt: string): Boolean;
 
+procedure ParseM3UFile(const asFilename: string; var Strings: TStringList);
+procedure ParsePLSFile(const asFilename: string; var Strings: TStringList);
+
 //-- Cursor-Management
 procedure PushCursor;
 procedure PopCursor;
@@ -55,6 +59,7 @@ procedure ResetCursor;
 //-- audio helper functions
 function DetermineFileInfo(const asFile: string; var aiSize, aiBitrate: integer; var adtLength: TDateTime): boolean;
 function ExtractWaveRate(const asFile: string): Integer;
+function GetNumberFramesVBR(const asFile: string): Integer;
 
 //-- only one instance management
 procedure PassToOtherInstance(const handle: HWND);
@@ -104,6 +109,7 @@ begin
     Free;
   end;
 end;
+
 
 procedure ShutdownWindows(how: TShutdownFlag);
 //-- the following procedure is based on TWinReboot by
@@ -271,9 +277,21 @@ begin
     with MyIni, Global do
     begin
       //-- System
-      Encoder := ReadString('System', 'Encoder', Encoder);
+      LameEncoder := ReadString('System', 'Encoder', LameEncoder);
+{$IFDEF USE_FAAC}
+      FaacEncoder := ReadString('System', 'FaacEncoder', FaacEncoder);
+{$ENDIF}
+
+ //     DefaultEncoder := ReadString('System','DefaultEncoder',LameEncoder);
+      DefaultEncoder := LameEncoder;
+
       ThreadPriority := TThreadPriority(ReadInteger('System', 'Priority', Ord(ThreadPriority)));
       ShutdownFlag := TShutdownFlag(ReadInteger('System', 'ShutdownFlag', Ord(ShutdownFlag)));
+      ShowProgress := ReadBool('System', 'ShowProgress', true);
+      AutoDelete := ReadBool('System', 'AutoDelete', true);
+
+      ExcerptPosition := ReadInteger('System', 'ExcerptPosition', 1);
+      ExcerptLength := ReadInteger('System', 'ExcerptLength', 10);
     end;
   finally
     MyIni.Free;
@@ -284,6 +302,7 @@ end;
 procedure ReadLameOptions(const asFilename: string);
 var
   MyIni: TIniFile;
+  liCount, i: Integer;
 begin
   MyIni := TIniFile.Create(asFilename);
   try
@@ -328,6 +347,9 @@ begin
       CustomOptions := ReadString('Expert', 'CustomOptions', CustomOptions);
       OnlyCustomOptions := ReadBool('Expert', 'OnlyCustomOptions', OnlyCustomOptions);
       qLevel := ReadInteger('Expert', 'qLevel', qLevel);
+      liCount := ReadInteger('Expert', 'MRUCount', 0);
+      for i := 0 to liCount - 1 do
+        CustomMRU.Add(ReadString('Expert', 'CustomMRU' + IntToStr(i), ''));
 
       //-- Audio Processing
       ResampleFreq := TResampleFreq(ReadInteger('Audio', 'Resampling', Ord(ResampleFreq)));
@@ -354,9 +376,20 @@ begin
     with MyIni, Global do
     begin
       //-- System
-      WriteString('System', 'Encoder', Encoder);
+      WriteString('System', 'Encoder', LameEncoder);
+{$IFDEF USE_FAAC}
+      WriteString('System', 'FaacEncoder', FaacEncoder);
+{$ENDIF}
+    //  WriteString('System', 'DefaultEncoder', DefaultEncoder);
+      DefaultEncoder := LameEncoder;
+
       WriteInteger('System', 'Priority', Ord(ThreadPriority));
       WriteInteger('System', 'ShutdownFlag', Ord(ShutdownFlag));
+      WriteBool('System', 'ShowProgress', ShowProgress);
+      WriteBool('System', 'AutoDelete', AutoDelete);
+
+      WriteInteger('System', 'ExcerptLength', ExcerptLength);
+      WriteInteger('System', 'ExcerptPosition', ExcerptPosition);
     end;
   finally
     MyIni.Free;
@@ -367,6 +400,7 @@ end;
 procedure WriteLameOptions(const asFilename: string);
 var
   MyIni: TIniFile;
+  i: Integer;
 begin
   MyIni := TIniFile.Create(asFilename);
   try
@@ -411,6 +445,10 @@ begin
       WriteBool('Expert', 'OnlyCustomOptions', OnlyCustomOptions);
       WriteInteger('Expert', 'qLevel', qLevel);
 
+      WriteInteger('Expert', 'MRUCount', CustomMRU.Count);
+      for i := 0 to CustomMRU.Count - 1 do
+        WriteString('Expert', 'CustomMRU' + IntToStr(i), CustomMRU[i]);
+
       //-- Audio Processing
       WriteInteger('Audio', 'Resampling', Ord(ResampleFreq));
       WriteBool('Audio', 'HighpassEnabled', HighpassEnabled);
@@ -426,7 +464,6 @@ begin
     MyIni.Free;
   end;
 end;
-
 
 procedure StoreInIni(const asSection, asItem: string; const aiValue: Integer);
 begin
@@ -679,6 +716,65 @@ begin
   end;
 end;
 
+procedure ParseM3UFile(const asFilename: string; var Strings: TStringList);
+var
+  F: Textfile;
+  lsLine: string;
+begin
+  AssignFile(F, asFilename);
+  try
+    FileMode := 0;
+    Reset(F);
+    while not EOF(F) do
+    begin
+      Readln(F, lsLine);
+      if Trim(lsLine) = '' then Continue;
+      if lsLine[1] = '#' then Continue;
+      if Length(lsLine) < 2 then Continue;
+      if lsLine[2] = ':' then
+        Strings.Add(lsLine) // absolute path
+      else
+        if lsLine[1] = '\' then
+        Strings.Add(ExtractFileDrive(asFilename) + lsLine)
+      else
+        Strings.Add(ExtractFileDir(asFilename) + '\' + lsLine);
+    end;
+  finally
+    CloseFile(F);
+  end;
+end;
+
+
+procedure ParsePLSFile(const asFilename: string; var Strings: TStringList);
+var
+  F: textfile;
+  lsLine: string;
+  liPos: Integer;
+begin
+  AssignFile(F, asFilename);
+  try
+    FileMode := 0;
+    Reset(F);
+
+    while not EOF(F) do
+    begin
+      Readln(F, lsLine);
+      if not (Copy(lsLine, 1, 4) = 'File') then Continue;
+      liPos := Pos('=', lsLine) + 1;
+      if Length(lsLine) < liPos + 1 then Continue;
+      if lsLine[liPos + 1] = ':' then
+        Strings.Add(Copy(lsLine, liPos, Length(lsLine))) // absolute path
+      else
+        if lsLine[liPos] = '\' then
+        Strings.Add(ExtractFileDrive(asFilename) + Copy(lsLine, liPos, Length(lsLine)))
+      else
+        Strings.Add(ExtractFileDir(asFilename) + '\' + Copy(lsLine, liPos, Length(lsLine)));
+    end;
+  finally
+    CloseFile(F);
+  end;
+end;
+
 //-----------------------------------------------
 //-- Cursor-Management
 //-----------------------------------------------
@@ -704,6 +800,24 @@ begin
   Screen.Cursor := crDefault;
 end;
 
+//-----------------------------------------------
+//-- Audio helper functions
+//-----------------------------------------------
+
+function GetNumberFramesVBR(const asFile: string): Integer;
+begin
+  with TMpegAudio.Create do
+  try
+    FileName := asFile;
+    if Mp3Type = mpVBR then
+      Result := NumberOfFrames
+    else
+      Result := 0;
+  finally
+    Free;
+  end;
+end;
+
 function ExtractWaveRate(const asFile: string): Integer;
 var
   Datafile: file;
@@ -723,45 +837,6 @@ begin
       Result := Buffer[29] + 256 * Buffer[30] + 256 * 256 * Buffer[31];
   finally
     CloseFile(Datafile);
-  end;
-end;
-
-procedure PassToOtherInstance(const handle: HWND);
-var
-  liParamCount: Integer;
-  i: Integer;
-  lsCmdLine: string;
-  at: atom;
-begin
-  liParamCount := System.ParamCount;
-  for i := 1 to liParamCount do
-    lsCmdLine := lsCmdLine + System.ParamStr(i);
-
-  at := GlobalAddAtom(PChar(lsCmdLine));
-  {Hopefully only _one_ (or zero) parameters}
-
-  if SendMessage(handle, WM_PASSED_FROM_INSTANCE, liParamCount, DWORD(at)) < 0 then
-  begin
-    MyMessageBox(MSG_RL_IS_BUSY, MSG_INFO, MB_ICONEXCLAMATION or MB_OK);
-  end;
-end;
-
-function EnumFunc(Wnd: HWND; var pWnd: HWND): bool; stdcall;
-var
-  ClassName, WindowText: array[0..30] of char;
-begin
-  Result := true; {true means _not_ our window}
-
-  GetWindowText(wnd, WindowText, SizeOf(WindowText));
-  GetClassName(wnd, ClassName, SizeOf(ClassName));
-
-  if Copy(WindowText, 1, 11) = 'RazorLame 1' then
-  begin
-    if (Wnd <> Application.handle) and (ClassName = 'TFormMain') then
-    begin
-      pWnd := Wnd;
-      result := false;
-    end;
   end;
 end;
 
@@ -797,10 +872,55 @@ begin
     with TMpegAudio.Create do
     try
       Filename := asFile;
-      adtLength := DurationTime;
-      aiBitrate := Bitrate;
+      adtLength := DurationExact / (60 * 60 * 24);
+      if Bitrate = -1 then
+        aiBitrate := Trunc((FileLength * -8) / (DurationExact * 1000)) //VBR
+      else
+        aiBitrate := Bitrate; //CBR
     finally
       Free;
+    end;
+  end;
+end;
+
+//-----------------------------------------------------------------
+//-- helper functions for "only one instance" functionality
+//-----------------------------------------------------------------
+
+procedure PassToOtherInstance(const handle: HWND);
+var
+  liParamCount: Integer;
+  i: Integer;
+  lsCmdLine: string;
+  at: atom;
+begin
+  liParamCount := System.ParamCount;
+  for i := 1 to liParamCount do
+    lsCmdLine := lsCmdLine + System.ParamStr(i);
+
+  at := GlobalAddAtom(PChar(lsCmdLine));
+  {Hopefully only _one_ (or zero) parameters}
+
+  if SendMessage(handle, WM_PASSED_FROM_INSTANCE, liParamCount, DWORD(at)) < 0 then
+  begin
+    MyMessageBox(MSG_RL_IS_BUSY, MSG_INFO, MB_ICONEXCLAMATION or MB_OK);
+  end;
+end;
+
+
+function EnumFunc(Wnd: HWND; var pWnd: HWND): bool; stdcall;
+var
+  ClassName, WindowText: array[0..30] of char;
+begin
+  Result := true; {true means _not_ our window}
+  GetWindowText(wnd, WindowText, SizeOf(WindowText));
+  GetClassName(wnd, ClassName, SizeOf(ClassName));
+  if Copy(WindowText, 1, 11) = 'RazorLame 1' then
+  begin
+    if (Wnd <> Application.handle) and (ClassName = 'TFormMain') then
+    begin
+      pWnd := Wnd;
+      result := false;
     end;
   end;
 end;

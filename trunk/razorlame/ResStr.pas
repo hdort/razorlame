@@ -6,25 +6,27 @@
 
    See license.txt for details.             *)
 
-Unit ResStr;
+unit ResStr;
 
-Interface
+interface
 
-Resourcestring
-
+resourcestring
   ID_ENCODE = 'Encode';
   ID_CANCEL = 'Cancel';
   ID_STATUS = 'Status=';
   ID_BATCH = 'Batch=';
   ID_WORKING = 'Working on file %d of %d: "%s"';
-  ID_OUTPUT = 'Outputformat: ';
+  ID_OUTPUT = 'Output format: ';
   ID_ENC_IN_PROGRESS = 'Encoding in progress';
   ID_DEC_IN_PROGRESS = 'Decoding in progress';
   ID_STOP_ENC = 'Stopping encoding when done with current file...';
   ID_STOP_DEC = 'Stopping decoding when done with current file...';
 
   MSG_NOFILES = 'There are no files to encode!';
-  MSG_NOENCODER = 'The file "%s" couldn''t be found.'#13#10'Please specify in the following options dialog the correct location of LAME.';
+  MSG_NOENCODERLAME = 'The file "%s" couldn''t be found.'#13#10'Please specify in the following options dialog the correct location of LAME.';
+{.$IFDEF USE_FAAC}
+  MSG_NOENCODERFAAC = 'The file "%s" couldn''t be found.'#13#10'Please specify in the following options dialog the correct location of FAAC.';
+{.$ENDIF}
   MSG_ANERROROCCURRED = 'At least one error occurred. Do you want to view the log?';
   MSG_ABORTENCODING = 'Do you want to stop encoding now or stop encoding when the currently processed file is done?';
   MSG_DIFFERENTENCODER = 'The file you''ve selected isn''t named "Lame.exe".'#13#10'Are you sure that you''ve selected the right file?';
@@ -68,7 +70,13 @@ Resourcestring
 
   LABEL_TIMEOUT = 'Time left: %d';
 
-Implementation
+  ID_WAITING = 'Queued';
+  ID_DONE = 'Done';
+  ID_FAILED = 'Failed';
+  ID_CANCELLED = 'Cancelled';
+  ID_CONNECTING = 'Starting';
 
-End.
+implementation
+
+end.
 
