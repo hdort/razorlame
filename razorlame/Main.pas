@@ -612,6 +612,23 @@ begin
     Exit;
   end;
 
+  //-- Mantis #89: check if Output Folder exists
+  if not MP3Settings.UseInputDir and not DirectoryExists(MP3Settings.OutDir) then
+  begin
+    case MyMessageBox(Format(MSG_OUTDIR_DOES_NOT_EXIST, [MP3Settings.OutDir]),
+     MSG_QUESTION, MB_ICONEXCLAMATION or MB_YESNOCANCEL) of
+      IDYES:
+        if not ForceDirectories(MP3Settings.OutDir) then
+        begin
+          MyMessageBox(Format(MSG_COULD_NOT_CREATE_OUTDIR, [MP3Settings.OutDir]),
+            MSG_ERROR, MB_ICONEXCLAMATION or MB_OK);
+          exit;
+        end;
+
+      IDCANCEL: exit;
+    end;
+  end;
+
   //-- check if input <> output files
   if not CheckOutputDiffersInput('.mp3') then Exit;
 
