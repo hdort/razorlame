@@ -1,4 +1,4 @@
-(* (c) Copyright 2000 - Holger Dors
+(* (c) Copyright 2000-2005  -  Holger Dors
    =======================================
 
    This file is part of RazorLame,
@@ -169,6 +169,23 @@ begin
       Exit;
     end;
 
+    //-- set alt-presets
+    if UsePresets then
+    begin
+      case PresetMode of
+        pmVBR: Result := Result + VBRPresets[PresetVBRItem];
+        pmABR: if PresetCustomABR then
+                 Result := Result + ' --alt-preset ' + IntToStr(PresetCustomABRValue)
+               else Result := Result + ABRPresets[PresetABRItem];
+        pmCBR: Result := Result + CBRPresets[PresetCBRItem];
+      end;
+      if Trim(CustomOptions) <> '' then
+        Result := Result + ' ' + CustomOptions;
+
+      Exit;
+    end;
+
+
     //-- set the desired bitrate
     Result := Result + ' -b ' + IntToStr(Bitrate);
 
@@ -301,6 +318,18 @@ begin
   try
     with MyIni, MP3Settings do
     begin
+      //-- Presets
+      UsePresets := false;
+      UsePresets := ReadBool('Presets', 'UsePresets', UsePresets);
+      PresetMode := TPresetMode(ReadInteger('Presets', 'Mode', Ord(PresetMode)));
+
+      PresetVBRItem := ReadInteger('Presets', 'VBRItem', PresetVBRItem);
+      PresetABRItem := ReadInteger('Presets', 'ABRItem', PresetABRItem);
+      PresetCBRItem := ReadInteger('Presets', 'CBRItem', PresetCBRItem);
+
+      PresetCustomABR := ReadBool('Presets', 'PresetCustomABR', PresetCustomABR);
+      PresetCustomABRValue := ReadInteger('Presets', 'CustomABRValue', PresetCustomABRValue);
+
       //-- General
       Description := ReadString('General', 'Description', Description);
       Bitrate := ReadInteger('General', 'Bitrate', Bitrate);
@@ -389,6 +418,17 @@ begin
   try
     with MyIni, MP3Settings do
     begin
+      //-- Presets
+      WriteBool('Presets', 'UsePresets', UsePresets);
+      WriteInteger('Presets', 'Mode', Ord(PresetMode));
+
+      WriteInteger('Presets', 'VBRItem', PresetVBRItem);
+      WriteInteger('Presets', 'ABRItem', PresetABRItem);
+      WriteInteger('Presets', 'CBRItem', PresetCBRItem);
+
+      WriteBool('Presets', 'PresetCustomABR', PresetCustomABR);
+      WriteInteger('Presets', 'CustomABRValue', PresetCustomABRValue);
+
       //-- General
       WriteString('General', 'Description', Description);
       WriteInteger('General', 'Bitrate', Bitrate);

@@ -1,4 +1,4 @@
-(* (c) Copyright 2000,2001 - Holger Dors
+(* (c) Copyright 2000-2005  -  Holger Dors
    =======================================
 
    This file is part of RazorLame,
@@ -286,6 +286,14 @@ begin
     OnlyCustomOptions := false;
     qLevel := -1;
     Description := 'No Description';
+    UsePresets := true;
+    PresetMode := pmVBR;
+    PresetVBRItem := 1;
+    PresetABRItem := 3;
+    PresetCBRItem := 3;
+    PresetCustomABR := false;
+    PresetCustomABRValue := 144;
+
     //todo: ID3 stuff
   end;
 
@@ -1379,7 +1387,7 @@ begin
       DeleteZeroByteFile(lsFile);
 
       //-- add a note about the error
-      Global.Log.Add(Format('AdvaLame Suite encountered an unknown message from LAME while trying to encode "%s"!',
+      Global.Log.Add(Format('RazorLame encountered an unknown message from LAME while trying to encode "%s"!',
         [Global.CurrentFileFullname]));
     end;
 
@@ -1919,7 +1927,7 @@ begin
       DeleteZeroByteFile(lsFile);
 
       //-- add a note about the error
-      Global.Log.Add(Format('AdvaLame Suite  encountered an unknown message from LAME while trying to decode "%s"!',
+      Global.Log.Add(Format('RazorLame encountered an unknown message from LAME while trying to decode "%s"!',
         [Global.CurrentFileFullname]));
     end;
 
