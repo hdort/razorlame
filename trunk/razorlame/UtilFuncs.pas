@@ -10,7 +10,8 @@ unit UtilFuncs;
 
 interface
 
-uses Windows, Forms, Classes, Dialogs;
+uses Forms, Controls, Classes, Dialogs;
+
 
 function MyMsgDlg(const asMsg, asCaption: string; aDlgType: TMsgDlgType;
   aButtons: TMsgDlgButtons; const Args: array of string): Integer;
@@ -22,6 +23,8 @@ procedure WriteOptions;
 procedure WriteLameOptions(const asFilename: string);
 procedure ReadLameOptions(const asFilename: string);
 
+procedure FillResampleStrings(Strings: TStrings);
+
 type
   TShutdownFlag = (sfClose, sfShutdown, sfLogOff, sfRestart, sfHibernate, sfSuspend);
 
@@ -31,15 +34,18 @@ procedure StoreInIni(const asSection, asItem: string; const aiValue: Integer); o
 procedure StoreInIni(const asSection, asItem, asValue: string); overload;
 procedure StoreInIni(const asSection, asItem: string; const abValue: Boolean); overload;
 
+function IniReadBool(const asSection, asItem: string; const abDefault:Boolean): boolean;
+function IniReadInteger(const asSection, asItem: string; const aiDefault: Integer): Integer;
+
 procedure ReadSystemData;
 
 //-- called without asIniFile, ExeFileName is used with .ini extension
-procedure RepositionForm(const asSection: string; aForm: TForm; const asIniFile: string = '');
+function RepositionForm(const asSection: string; aForm: TForm; const asIniFile: string = ''): boolean;
 procedure RegisterFormPosition(const asSection: string; aForm: TForm; const asIniFile: string = '');
 
 //- needed those when kicking RxLib
 function FileDateTime(const FileName: string): TDateTime;
-function GetFileSize(const FileName: string): Integer;
+function GetFileSize(const FileName: string): Int64;
 
 //-- other util funcs
 function StrToFloatDef(const Value: string; const Default: Extended): Extended;
@@ -47,27 +53,20 @@ function GetSystemErrorMessage(const aiErrorCode: Integer): string;
 function DeleteZeroByteFile(const FileName: string): Boolean;
 function CreateFilterFromStringList(List: TStringList): string;
 function IsExtensionAllowed(const asExt: string): Boolean;
+function FloatToInternalStr(const afValue: Extended): string;
+function InternalStrToFloat(const asValue: string): Extended;
 
-procedure ParseM3UFile(const asFilename: string; var Strings: TStringList);
-procedure ParsePLSFile(const asFilename: string; var Strings: TStringList);
+procedure FixDPI(f: TForm; DesignDPI: integer);
+procedure SetFont(AWinControl: TWinControl; const DesignFont, SelectedFont: string);
 
 //-- Cursor-Management
 procedure PushCursor;
 procedure PopCursor;
 procedure ResetCursor;
 
-//-- audio helper functions
-function DetermineFileInfo(const asFile: string; var aiSize, aiBitrate: integer; var adtLength: TDateTime): boolean;
-function ExtractWaveRate(const asFile: string): Integer;
-function GetNumberFramesVBR(const asFile: string): Integer;
-
-//-- only one instance management
-procedure PassToOtherInstance(const handle: HWND);
-function EnumFunc(Wnd: HWND; var pWnd: HWND): bool; stdcall;
-
 implementation
 
-uses Controls, StdCtrls, SysUtils, FileCtrl, IniFiles, Globals, ResStr, MPGTools;
+uses Windows, StdCtrls, SysUtils, FileCtrl, IniFiles, Globals;
 
 function MyMsgDlg(const asMsg, asCaption: string; aDlgType: TMsgDlgType;
   aButtons: TMsgDlgButtons; const Args: array of string): Integer;
@@ -184,7 +183,6 @@ begin
     case LameOptimization of
       loSpeed: Result := Result + ' -f';
       loQuality: Result := Result + ' -h';
-      loVoice: Result := Result + ' --voice';
     end;
 
     if IncludeCRC then Result := Result + ' -p';
@@ -209,6 +207,9 @@ begin
     if ResampleFreq <> rfDefault then
     begin
       case ResampleFreq of
+        rf8kHz: Result := Result + ' --resample 8';
+        rf11kHz: Result := Result + ' --resample 11.025';
+        rf12kHz: Result := Result + ' --resample 12';
         rf16kHz: Result := Result + ' --resample 16';
         rf22kHz: Result := Result + ' --resample 22.05';
         rf24kHz: Result := Result + ' --resample 24';
@@ -277,21 +278,13 @@ begin
     with MyIni, Global do
     begin
       //-- System
-      LameEncoder := ReadString('System', 'Encoder', LameEncoder);
-{$IFDEF USE_FAAC}
-      FaacEncoder := ReadString('System', 'FaacEncoder', FaacEncoder);
-{$ENDIF}
-
- //     DefaultEncoder := ReadString('System','DefaultEncoder',LameEncoder);
-      DefaultEncoder := LameEncoder;
-
+      Encoder := ReadString('System', 'Encoder', Encoder);
       ThreadPriority := TThreadPriority(ReadInteger('System', 'Priority', Ord(ThreadPriority)));
       ShutdownFlag := TShutdownFlag(ReadInteger('System', 'ShutdownFlag', Ord(ShutdownFlag)));
-      ShowProgress := ReadBool('System', 'ShowProgress', true);
-      AutoDelete := ReadBool('System', 'AutoDelete', true);
-
-      ExcerptPosition := ReadInteger('System', 'ExcerptPosition', 1);
-      ExcerptLength := ReadInteger('System', 'ExcerptLength', 10);
+      SelectedFont := ReadString('System', 'Font', DESIGN_FONT);
+      XPMenu := ReadBool('System', 'XPMenu', XPMenu);
+      LRColor := ReadInteger('System', 'LRColor', LRColor);
+      MSColor := ReadInteger('System', 'MSColor', MSColor);
     end;
   finally
     MyIni.Free;
@@ -302,7 +295,7 @@ end;
 procedure ReadLameOptions(const asFilename: string);
 var
   MyIni: TIniFile;
-  liCount, i: Integer;
+
 begin
   MyIni := TIniFile.Create(asFilename);
   try
@@ -347,20 +340,17 @@ begin
       CustomOptions := ReadString('Expert', 'CustomOptions', CustomOptions);
       OnlyCustomOptions := ReadBool('Expert', 'OnlyCustomOptions', OnlyCustomOptions);
       qLevel := ReadInteger('Expert', 'qLevel', qLevel);
-      liCount := ReadInteger('Expert', 'MRUCount', 0);
-      for i := 0 to liCount - 1 do
-        CustomMRU.Add(ReadString('Expert', 'CustomMRU' + IntToStr(i), ''));
 
       //-- Audio Processing
       ResampleFreq := TResampleFreq(ReadInteger('Audio', 'Resampling', Ord(ResampleFreq)));
       HighpassEnabled := ReadBool('Audio', 'HighpassEnabled', HighpassEnabled);
-      HighpassFreq := ReadFloat('Audio', 'HighpassFreq', HighpassFreq);
+      HighpassFreq := InternalStrToFloat(ReadString('Audio', 'HighpassFreq', FloatToInternalStr(HighpassFreq)));
       HighWidthEnabled := ReadBool('Audio', 'HighWidthEnabled', HighWidthEnabled);
-      HighpassWidth := ReadFloat('Audio', 'HighpassWidth', HighpassWidth);
+      HighpassWidth := InternalStrToFloat(ReadString('Audio', 'HighpassWidth', FloatToInternalStr(HighpassWidth)));
       LowpassEnabled := ReadBool('Audio', 'LowpassEnabled', LowpassEnabled);
-      LowpassFreq := ReadFloat('Audio', 'LowpassFreq', LowpassFreq);
+      LowpassFreq := InternalStrToFloat(ReadString('Audio', 'LowpassFreq', FloatToInternalStr(LowpassFreq)));
       LowWidthEnabled := ReadBool('Audio', 'LowWidthEnabled', LowWidthEnabled);
-      LowpassWidth := ReadFloat('Audio', 'LowpassWidth', LowpassWidth);
+      LowpassWidth := InternalStrToFloat(ReadString('Audio', 'LowpassWidth', FloatToInternalStr(LowpassWidth)));
     end;
   finally
     MyIni.Free;
@@ -376,20 +366,13 @@ begin
     with MyIni, Global do
     begin
       //-- System
-      WriteString('System', 'Encoder', LameEncoder);
-{$IFDEF USE_FAAC}
-      WriteString('System', 'FaacEncoder', FaacEncoder);
-{$ENDIF}
-    //  WriteString('System', 'DefaultEncoder', DefaultEncoder);
-      DefaultEncoder := LameEncoder;
-
+      WriteString('System', 'Encoder', Encoder);
       WriteInteger('System', 'Priority', Ord(ThreadPriority));
       WriteInteger('System', 'ShutdownFlag', Ord(ShutdownFlag));
-      WriteBool('System', 'ShowProgress', ShowProgress);
-      WriteBool('System', 'AutoDelete', AutoDelete);
-
-      WriteInteger('System', 'ExcerptLength', ExcerptLength);
-      WriteInteger('System', 'ExcerptPosition', ExcerptPosition);
+      WriteString('System', 'Font', SelectedFont);
+      WriteBool('System', 'XPMenu', XPMenu);
+      WriteInteger('System', 'LRColor', LRColor);
+      WriteInteger('System', 'MSColor', MSColor);
     end;
   finally
     MyIni.Free;
@@ -400,7 +383,7 @@ end;
 procedure WriteLameOptions(const asFilename: string);
 var
   MyIni: TIniFile;
-  i: Integer;
+
 begin
   MyIni := TIniFile.Create(asFilename);
   try
@@ -445,25 +428,22 @@ begin
       WriteBool('Expert', 'OnlyCustomOptions', OnlyCustomOptions);
       WriteInteger('Expert', 'qLevel', qLevel);
 
-      WriteInteger('Expert', 'MRUCount', CustomMRU.Count);
-      for i := 0 to CustomMRU.Count - 1 do
-        WriteString('Expert', 'CustomMRU' + IntToStr(i), CustomMRU[i]);
-
       //-- Audio Processing
       WriteInteger('Audio', 'Resampling', Ord(ResampleFreq));
       WriteBool('Audio', 'HighpassEnabled', HighpassEnabled);
-      WriteFloat('Audio', 'HighpassFreq', HighpassFreq);
+      WriteString('Audio', 'HighpassFreq', FloatToInternalStr(HighpassFreq));
       WriteBool('Audio', 'HighWidthEnabled', HighWidthEnabled);
-      WriteFloat('Audio', 'HighpassWidth', HighpassWidth);
+      WriteString('Audio', 'HighpassWidth', FloatToInternalStr(HighpassWidth));
       WriteBool('Audio', 'LowpassEnabled', LowpassEnabled);
-      WriteFloat('Audio', 'LowpassFreq', LowpassFreq);
+      WriteString('Audio', 'LowpassFreq', FloatToInternalStr(LowpassFreq));
       WriteBool('Audio', 'LowWidthEnabled', LowWidthEnabled);
-      WriteFloat('Audio', 'LowpassWidth', LowpassWidth);
+      WriteString('Audio', 'LowpassWidth', FloatToInternalStr(LowpassWidth));
     end;
   finally
     MyIni.Free;
   end;
 end;
+
 
 procedure StoreInIni(const asSection, asItem: string; const aiValue: Integer);
 begin
@@ -495,7 +475,27 @@ begin
   end;
 end;
 
-procedure RepositionForm(const asSection: string; aForm: TForm; const asIniFile: string);
+function IniReadBool(const asSection, asItem: string; const abDefault: Boolean): boolean;
+begin
+  with TIniFile.Create(ChangeFileExt(LowerCase(Application.ExeName), '.ini')) do
+  try
+    Result := ReadBool(asSection, asItem, abDefault);
+  finally
+    Free;
+  end;
+end;
+
+function IniReadInteger(const asSection, asItem: string; const aiDefault: Integer): Integer;
+begin
+  with TIniFile.Create(ChangeFileExt(LowerCase(Application.ExeName), '.ini')) do
+  try
+    Result := ReadInteger(asSection, asItem, aiDefault);
+  finally
+    Free;
+  end;
+end;
+
+function RepositionForm(const asSection: string; aForm: TForm; const asIniFile: string): boolean;
 var
   lsIniFile: string;
   lbMaximized: Boolean;
@@ -504,6 +504,8 @@ var
     liWidth,
     liHeight: Integer;
 begin
+  Result := true;
+  
   lsIniFile := asIniFile;
   //-- Empty Parameter -> ExeFile plus .INI
   if Trim(lsIniFile) = '' then
@@ -511,16 +513,17 @@ begin
 
   with TIniFile.Create(lsIniFile) do
   try
+    //if not SectionExists(asSection) then Result := false;
     lbMaximized := ReadBool(asSection, 'maximized', false);
     liLeft := ReadInteger(asSection, 'x', aForm.Left);
     liTop := ReadInteger(asSection, 'y', aForm.Top);
     liHeight := ReadInteger(asSection, 'height', aForm.Height);
     liWidth := ReadInteger(asSection, 'width', aForm.Width);
 
-      //-- if wider or higher then screen, shrink form
+    //-- if wider or higher then screen, shrink form
     if liWidth > Screen.Width then liWidth := Screen.Width;
     if liHeight > Screen.Height then liHeight := Screen.Height;
-      //-- move form so it will be fully visible
+    //-- move form so it will be fully visible
     if liLeft + liWidth > Screen.Width then liLeft := Screen.Width - liWidth;
     if liTop + liHeight > Screen.Height then liTop := Screen.Height - liHeight;
     if liLeft < 0 then liLeft := 0;
@@ -566,14 +569,17 @@ begin
   Result := FileDateToDateTime(FileAge(FileName));
 end;
 
-function GetFileSize(const FileName: string): Integer;
+function GetFileSize(const FileName: string): Int64;
 var
   SearchRec: TSearchRec;
 begin
   Result := -1; //-- assume worst cas
   if FindFirst(FileName, faAnyFile, SearchRec) = 0 then
   begin
-    Result := SearchRec.Size;
+    //Result := SearchRec.Size;
+    //Result := SearchRec.FindData.nFileSizeLow;
+    Int64Rec(Result).Lo := SearchRec.FindData.nFileSizeLow;
+    Int64Rec(Result).Hi := SearchRec.FindData.nFileSizeHigh;
     FindClose(SearchRec);
   end;
 end;
@@ -716,63 +722,14 @@ begin
   end;
 end;
 
-procedure ParseM3UFile(const asFilename: string; var Strings: TStringList);
-var
-  F: Textfile;
-  lsLine: string;
+function FloatToInternalStr(const afValue: Extended): string;
 begin
-  AssignFile(F, asFilename);
-  try
-    FileMode := 0;
-    Reset(F);
-    while not EOF(F) do
-    begin
-      Readln(F, lsLine);
-      if Trim(lsLine) = '' then Continue;
-      if lsLine[1] = '#' then Continue;
-      if Length(lsLine) < 2 then Continue;
-      if lsLine[2] = ':' then
-        Strings.Add(lsLine) // absolute path
-      else
-        if lsLine[1] = '\' then
-        Strings.Add(ExtractFileDrive(asFilename) + lsLine)
-      else
-        Strings.Add(ExtractFileDir(asFilename) + '\' + lsLine);
-    end;
-  finally
-    CloseFile(F);
-  end;
+  Result := StringReplace(FloatToStr(afValue), DecimalSeparator, '.', []);
 end;
 
-
-procedure ParsePLSFile(const asFilename: string; var Strings: TStringList);
-var
-  F: textfile;
-  lsLine: string;
-  liPos: Integer;
+function InternalStrToFloat(const asValue: string): Extended;
 begin
-  AssignFile(F, asFilename);
-  try
-    FileMode := 0;
-    Reset(F);
-
-    while not EOF(F) do
-    begin
-      Readln(F, lsLine);
-      if not (Copy(lsLine, 1, 4) = 'File') then Continue;
-      liPos := Pos('=', lsLine) + 1;
-      if Length(lsLine) < liPos + 1 then Continue;
-      if lsLine[liPos + 1] = ':' then
-        Strings.Add(Copy(lsLine, liPos, Length(lsLine))) // absolute path
-      else
-        if lsLine[liPos] = '\' then
-        Strings.Add(ExtractFileDrive(asFilename) + Copy(lsLine, liPos, Length(lsLine)))
-      else
-        Strings.Add(ExtractFileDir(asFilename) + '\' + Copy(lsLine, liPos, Length(lsLine)));
-    end;
-  finally
-    CloseFile(F);
-  end;
+  Result := StrToFloat(StringReplace(asValue, '.', DecimalSeparator, []));
 end;
 
 //-----------------------------------------------
@@ -800,128 +757,169 @@ begin
   Screen.Cursor := crDefault;
 end;
 
-//-----------------------------------------------
-//-- Audio helper functions
-//-----------------------------------------------
-
-function GetNumberFramesVBR(const asFile: string): Integer;
+procedure FillResampleStrings(Strings: TStrings);
 begin
-  with TMpegAudio.Create do
-  try
-    FileName := asFile;
-    if Mp3Type = mpVBR then
-      Result := NumberOfFrames
-    else
-      Result := 0;
-  finally
-    Free;
-  end;
+  Strings.Clear;
+  Strings.AddObject('default', TObject(Ord(rfDefault)));
+  Strings.AddObject('8 kHz', TObject(Ord(rf8kHz)));
+  Strings.AddObject('11.025 kHz', TObject(Ord(rf11kHz)));
+  Strings.AddObject('12 kHz', TObject(Ord(rf12kHz)));
+  Strings.AddObject('16 kHz', TObject(Ord(rf16kHz)));
+  Strings.AddObject('22.05 kHz', TObject(Ord(rf22kHz)));
+  Strings.AddObject('24 kHz', TObject(Ord(rf24kHz)));
+  Strings.AddObject('32 kHz', TObject(Ord(rf32kHz)));
+  Strings.AddObject('44.1 kHz', TObject(Ord(rf44kHz)));
+  Strings.AddObject('48 kHz', TObject(Ord(rf48kHz)));
 end;
 
-function ExtractWaveRate(const asFile: string): Integer;
+procedure FixDPI(f: TForm; DesignDPI: integer);
+(*
+        Small/Large system font solution
+        Have a TForm's properties Scaled and AutoScroll set to false
+        and after creating your form call this procedure like:
+                FixDPI (TForm1, 96) // If you designed in small fonts
+
+        Author: Tomislav Kardas, Zagreb, Croatia, Europe
+        Platform: Delphi 4 C/S
+*)
+
+//todo: adjust constraints (TControl property!) 
+
 var
-  Datafile: file;
-  Buffer: array[1..1024] of Byte;
-  liNumRead: Integer;
-begin
-  //-- this function can be greatly expanded; e.g., it won't check for
-  //-- a valid WAV header.
-  Result := 0;
-  AssignFile(Datafile, asFile);
-  try
-    FileMode := fmOpenRead;
-    Reset(Datafile, 1);
-    BlockRead(Datafile, Buffer, sizeof(Buffer), liNumRead);
+  ScaleM, ScaleD: integer;
 
-    if liNumRead > 32 then
-      Result := Buffer[29] + 256 * Buffer[30] + 256 * 256 * Buffer[31];
-  finally
-    CloseFile(Datafile);
-  end;
-end;
-
-function DetermineFileInfo(const asFile: string; var aiSize, aiBitrate: integer; var adtLength: TDateTime): boolean;
-var
-  lsExt: string;
-  liRate: integer;
-begin
-  //-- initialize results with worst-case values
-  Result := false;
-  aiSize := 0;
-  adtLength := 0;
-  aiBitrate := 0;
-
-  lsExt := LowerCase(ExtractFileExt(asFile));
-
-  //-- determine file size in bytes
-  aiSize := GetFileSize(asFile);
-
-  //-- determine file length & bitrate if we have appropriate means
-  if (lsExt = '.wav') then
+  function Scale(x: longint): longint;
   begin
-    liRate := ExtractWaveRate(asFile);
-    if liRate > 0 then
-      adtLength := (aiSize / liRate) / (60 * 60 * 24);
-    if adtLength > 0 then
-      //aiBitrate := Round((aiSize * 8) / (adtLength * 24 * 60 * 60 * 1000));
-      aiBitrate := Round((aiSize * 8) / ((aiSize / liRate) * 1000))
+    result := (x * ScaleM + ScaleD div 2) div ScaleD;
   end;
 
-  if (lsExt = '.mp3') or (lsExt = '.mp2') or (lsExt = '.mp1') then
+  procedure FixControl(c: TControl);
+  var
+    x: integer;
+    p: TWinControl;
+    fixwidth, fixheight: boolean;
   begin
-    with TMpegAudio.Create do
-    try
-      Filename := asFile;
-      adtLength := DurationExact / (60 * 60 * 24);
-      if Bitrate = -1 then
-        aiBitrate := Trunc((FileLength * -8) / (DurationExact * 1000)) //VBR
-      else
-        aiBitrate := Bitrate; //CBR
-    finally
-      Free;
-    end;
-  end;
-end;
+    //-- don't fix width for AutoSize Labels (added by hdo, 02.10.2001)
+    fixwidth := true;
+    if c is TCustomLabel then
+      if TLabel(c).AutoSize then fixwidth := false;
 
-//-----------------------------------------------------------------
-//-- helper functions for "only one instance" functionality
-//-----------------------------------------------------------------
-
-procedure PassToOtherInstance(const handle: HWND);
-var
-  liParamCount: Integer;
-  i: Integer;
-  lsCmdLine: string;
-  at: atom;
-begin
-  liParamCount := System.ParamCount;
-  for i := 1 to liParamCount do
-    lsCmdLine := lsCmdLine + System.ParamStr(i);
-
-  at := GlobalAddAtom(PChar(lsCmdLine));
-  {Hopefully only _one_ (or zero) parameters}
-
-  if SendMessage(handle, WM_PASSED_FROM_INSTANCE, liParamCount, DWORD(at)) < 0 then
-  begin
-    MyMessageBox(MSG_RL_IS_BUSY, MSG_INFO, MB_ICONEXCLAMATION or MB_OK);
-  end;
-end;
-
-
-function EnumFunc(Wnd: HWND; var pWnd: HWND): bool; stdcall;
-var
-  ClassName, WindowText: array[0..30] of char;
-begin
-  Result := true; {true means _not_ our window}
-  GetWindowText(wnd, WindowText, SizeOf(WindowText));
-  GetClassName(wnd, ClassName, SizeOf(ClassName));
-  if Copy(WindowText, 1, 11) = 'RazorLame 1' then
-  begin
-    if (Wnd <> Application.handle) and (ClassName = 'TFormMain') then
+    p := c.Parent;
+    if c.Align <> alNone then
     begin
-      pWnd := Wnd;
-      result := false;
+      // Fixing width
+      if fixwidth then
+        if ((c.Align = alLeft) and (akRight in c.Anchors)) or
+          ((c.Align = alRight) and (akLeft in c.Anchors)) then
+          c.Width := p.ClientWidth - Scale(p.ClientWidth - c.Width)
+        else
+          if (c.Align = alLeft) or (c.Align = alRight) then
+            c.Width := Scale(c.Width);
+
+      // Fixing height
+      if ((c.Align = alTop) and (akBottom in c.Anchors)) or
+        ((c.Align = alBottom) and (akTop in c.Anchors)) then
+        c.Height := p.ClientHeight - Scale(p.ClientHeight - c.Height)
+      else
+        if (c.Align = alTop) or (c.Align = alBottom) then
+          c.Height := Scale(c.Height);
+    end
+    else
+    begin
+      // Fixing width
+      x := p.ClientWidth - c.Width - c.Left;
+      if akLeft in c.Anchors then
+      begin
+        c.Left := Scale(c.Left);
+        if fixwidth then
+          if akRight in c.Anchors then
+            c.Width := p.ClientWidth - c.Left - Scale(x)
+          else
+            c.Width := Scale(c.Width);
+      end
+      else
+        if akRight in c.Anchors then
+        begin
+          if fixwidth then c.Width := Scale(c.Width);
+          c.Left := p.ClientWidth - c.Width - Scale(x);
+        end
+        else
+        begin
+          c.Left := Scale(c.Left);
+          if fixwidth then c.Width := Scale(c.Width);
+        end;
+
+      // Fixing height
+      fixheight := true;
+      if (c is TCustomEdit) and not (c is TCustomMemo) then
+        fixheight := false;
+      x := p.ClientHeight - c.Height - c.Top;
+      if akTop in c.Anchors then
+      begin
+        c.Top := Scale(c.Top);
+        if fixheight then
+        begin
+          if akBottom in c.Anchors then
+            c.Height := p.ClientHeight - c.Top - Scale(x)
+          else
+            c.Height := Scale(c.Height);
+        end;
+      end
+      else if akBottom in c.Anchors then
+      begin
+        if fixheight then
+          c.Height := Scale(c.Height);
+        c.Top := p.ClientHeight - c.Height - Scale(x);
+      end
+      else
+      begin
+        c.Top := Scale(c.Top);
+        if fixheight then
+          c.Height := Scale(c.Height);
+      end;
     end;
+  end;
+
+  procedure FixControls(c: TWinControl);
+  var
+    i: integer;
+  begin
+    for i := 0 to c.ControlCount - 1 do
+      if c.Controls[i].Owner = f then begin
+        FixControl(c.Controls[i]);
+        if c.Controls[i] is TWinControl then
+          FixControls(TWinControl(c.Controls[i]));
+      end;
+  end;
+
+begin
+  if DesignDPI <> Screen.PixelsPerInch then begin
+    ScaleM := Screen.PixelsPerInch;
+    ScaleD := DesignDPI;
+    f.ClientWidth := Scale(f.ClientWidth);
+    f.ClientHeight := Scale(f.ClientHeight);
+    FixControls(f);
+  end;
+end;
+
+type
+  TFontControl = class(TControl)
+  public
+    property Font;
+  end;
+
+procedure SetFont(AWinControl: TWinControl; const DesignFont, SelectedFont: string);
+var
+  i: integer;
+begin
+  if Screen.Fonts.IndexOf(SelectedFont) < 0 then exit; //-- Font not available
+  if SelectedFont = DesignFont then exit; //-- same fonts!
+  for i := 0 to AWinControl.ControlCount - 1 do
+  begin
+    with TFontControl(AWinControl.Controls[i]) do
+     if Font.Name = DesignFont then Font.Name := SelectedFont;
+    if AWinControl.Controls[i] is TWinControl then
+      SetFont(TWinControl(AWinControl.Controls[i]), DesignFont, SelectedFont);
   end;
 end;
 

@@ -22,6 +22,7 @@ type
     LabelVersion: TLabel;
     Memo1: TMemo;
     procedure FormShow(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
   private
     { Private declarations }
   public
@@ -32,6 +33,8 @@ var
   FormAbout: TFormAbout;
 
 implementation
+
+uses Globals, UtilFuncs;
 
 {$R *.DFM}
 
@@ -70,6 +73,13 @@ begin
     Caption := Caption + ' DEBUG!!';
 {$ENDIF}
   end;
+end;
+
+procedure TFormAbout.FormCreate(Sender: TObject);
+begin
+  //-- Set selected font
+  SetFont(Self, DESIGN_FONT, Global.SelectedFont);
+  FixDPI(self, 96);
 end;
 
 end.

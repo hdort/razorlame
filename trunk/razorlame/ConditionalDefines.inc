@@ -11,7 +11,7 @@
 
 //-- Beta & Debug Switches  ---------------------------------------------------
 
-{$DEFINE BETAVER}         // Beta reminder at start up [changeable]
+{.$DEFINE BETAVER}         // Beta reminder at start up [changeable]
 {$DEFINE DEBUG}           // basic debug information [changeable]
 {.$DEFINE DETAIL_DEBUG}
 {$IFNDEF DEBUG}

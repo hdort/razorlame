@@ -4,17 +4,19 @@ unit Redirect;
   I've taken what I've found and have done some small enhancements to it so
   it fits my needs.
 
-  Holger Dors, holger@dors.de
+  Holger Dors, holger@dors.de, March 2000
 
-  18. March 2000: added some comments, checked pipes a last time
-                  after process finishes to "clean up" properly.
-                  (Holger Dors)
-  25. June 2000:  InitialPriority was never really used! (Holger Dors)
-  February 2001:  added TRedirector.Suspend
-                  TRedirector.Terminate now waits 1s for thread to end before exit
-                  introduced CommonDataEvent
-                  (all changes by Jonathan Dee <dee@caltech.edu>)
-  03. March 2001: Added "LastData" property (Holger Dors)
+  2000-03-18: added some comments, checked pipes a last time after process
+              finishes to "clean up" properly. (Holger Dors)
+  2000-06-25: InitialPriority was never really used! (Holger Dors)
+  2001-03-03: Added "LastData" property (Holger Dors)
+  2001-09-01: make sure that pipes are read until they are empty after process 
+              has finished (Holger Dors)
+
+  to do: check if the last two changes are really necessary!
+  Those were done in order to get the "sometimes missing average problem"
+  solved, however, I think I've solved this now with a change in main.pas,
+  so perhaps those last changes aren't really necessary at all!!
 }
 
 interface
@@ -25,9 +27,9 @@ uses
 type
   TRedirector = class;
   TPriorityClass = (pcDefault, pcIdle, pcNormal, pcHigh, pcRealtime);
-  TDataEvent = procedure(const Line: string) of object;
- //   TDataEvent = procedure(Sender: TRedirector; Buffer: Pointer; Size: Integer) of object;
-  TCommonDataEvent = procedure(const Event: TDataEvent; Buffer: Pointer; Size: Integer) of object;
+  TDataEvent = procedure(Sender: TRedirector; Buffer: Pointer; Size: Integer) of object;
+
+
 
   TPipeError = record
     hRead: DWORD;
@@ -56,7 +58,7 @@ type
     FPipeError: TPipeError;
     FThread: TThread;
     FOnData: TDataEvent;
-    FOnCommonData: TCommonDataEvent;
+
     FOnErrorData: TDataEvent;
     FOnTerminated: TNotifyEvent;
     FShowWindow: Integer;
@@ -86,7 +88,7 @@ type
     destructor Destroy; override;
     procedure Terminate(dwExitCode: Integer);
     procedure Execute;
-    procedure Suspend(suspend: boolean);
+
     procedure SendData(Buffer: Pointer; BufferSize: Integer);
     procedure SendText(s: string);
     property Running: Boolean read GetRunning;
@@ -105,7 +107,7 @@ type
     property InitialPriority: TPriorityClass read FInitialPriority write SetInitialPriority;
     property Directory: string read FDirectory write SetDirectory;
     property OnData: TDataEvent read FOnData write FOnData;
-    property OnCommonData: TCommonDataEvent read FOnCommonData write FOnCommonData;
+
     property OnErrorData: TDataEvent read FOnErrorData write FOnErrorData;
     property OnTerminated: TNotifyEvent read FOnTerminated write FOnTerminated;
   end;
@@ -151,21 +153,27 @@ begin
 
   with FPipeInput do
   begin
-    if not CreatePipe(hRead, hWrite, @SecAttr, PIPE_SIZE) then WinError('Error on STDIN pipe creation : ');
+    if not CreatePipe(hRead, hWrite, @SecAttr, PIPE_SIZE)
+      then WinError('Error on STDIN pipe creation : ');
     if not DuplicateHandle(GetCurrentProcess, hRead, GetCurrentProcess,
-      @hRead, 0, true, DUPLICATE_CLOSE_SOURCE or DUPLICATE_SAME_ACCESS) then WinError('Error on STDIN pipe duplication : ');
+      @hRead, 0, true, DUPLICATE_CLOSE_SOURCE or DUPLICATE_SAME_ACCESS)
+      then WinError('Error on STDIN pipe duplication : ');
   end;
   with FPipeOutput do
   begin
-    if not CreatePipe(hRead, hWrite, @SecAttr, PIPE_SIZE) then WinError('Error on STDOUT pipe creation : ');
+    if not CreatePipe(hRead, hWrite, @SecAttr, PIPE_SIZE)
+      then WinError('Error on STDOUT pipe creation : ');
     if not DuplicateHandle(GetCurrentProcess, hWrite, GetCurrentProcess,
-      @hWrite, 0, true, DUPLICATE_CLOSE_SOURCE or DUPLICATE_SAME_ACCESS) then WinError('Error on STDOUT pipe duplication : ');
+      @hWrite, 0, true, DUPLICATE_CLOSE_SOURCE or DUPLICATE_SAME_ACCESS)
+      then WinError('Error on STDOUT pipe duplication : ');
   end;
   with FPipeError do
   begin
-    if not CreatePipe(hRead, hWrite, @SecAttr, PIPE_SIZE) then WinError('Error on STDERR pipe creation : ');
+    if not CreatePipe(hRead, hWrite, @SecAttr, PIPE_SIZE)
+      then WinError('Error on STDERR pipe creation : ');
     if not DuplicateHandle(GetCurrentProcess, hWrite, GetCurrentProcess,
-      @hWrite, 0, true, DUPLICATE_CLOSE_SOURCE or DUPLICATE_SAME_ACCESS) then WinError('Error on STDERR pipe duplication : ');
+      @hWrite, 0, true, DUPLICATE_CLOSE_SOURCE or DUPLICATE_SAME_ACCESS)
+      then WinError('Error on STDERR pipe duplication : ');
   end;
 end;
 
@@ -233,26 +241,29 @@ end;
 
 procedure TRedirector.SetExecutable(Value: string);
 begin
-  if (ANSICompareText(Value, Executable) = 0) or not Running then
+  if (ANSICompareText(Value, Executable) = 0) or not Running
+    then
     FExecutable := Value
-  else
-    if Running then
+  else if Running
+    then
     Error('Cannot change Executable while process is active');
 end;
 
 procedure TRedirector.SetCommandLine(Value: string);
 begin
-  if (ANSICompareText(Value, Commandline) = 0) or not Running then
+  if (ANSICompareText(Value, Commandline) = 0) or not Running
+    then
     FCommandline := Value
-  else
-    if Running then
+  else if Running
+    then
     Error('Cannot change Commandline while process is active');
 end;
 
 function TRedirector.GetCommandLine: string;
 begin
   Result := FExecutable;
-  if Result = '' then
+  if Result = ''
+    then
     Result := FCommandline
   else
     Result := FExecutable + ' ' + FCommandline;
@@ -283,8 +294,8 @@ procedure TRedirector.SetDefaultErrorMode(Value: Boolean);
 begin
   if (Value = DefaultErrorMode) or not Running then
     FDefaultErrorMode := Value
-  else
-    if Running then
+  else if Running then
+
     Error('Cannot change DefaultErrorMode while process is active');
 end;
 
@@ -292,8 +303,8 @@ procedure TRedirector.SetStartSuspended(Value: Boolean);
 begin
   if (Value = DefaultErrorMode) or not Running then
     FStartSuspended := Value
-  else
-    if Running then
+  else if Running then
+
     Error('Cannot change StartSuspended while process is active');
 end;
 
@@ -301,8 +312,8 @@ procedure TRedirector.SetInitialPriority(Value: TPriorityClass);
 begin
   if (Value <> InitialPriority) and not Running then
     FInitialPriority := Value
-  else
-    if Running then
+  else if Running then
+
     Error('Cannot change InititalPriority while process is active');
 end;
 
@@ -310,8 +321,8 @@ procedure TRedirector.SetDirectory(Value: string);
 begin
   if (ANSICompareText(Value, Directory) = 0) or (not Running) then
     FDirectory := Value
-  else
-    if Running then
+  else if Running then
+
     Error('Cannot change Directory while process is active');
 end;
 
@@ -319,8 +330,8 @@ procedure TRedirector.SetEnvironment(Value: Pointer);
 begin
   if (Value = Environment) or not Running then
     FEnvironment := Value
-  else
-    if Running then
+  else if Running then
+
     Error('Cannot change Environment while process is active');
 end;
 
@@ -328,8 +339,8 @@ procedure TRedirector.SetShowWindow(Value: Integer);
 begin
   if (Value = ShowWindow) or not Running then
     FShowWindow := Value
-  else
-    if Running then
+  else if Running then
+
     Error('Cannot change ShowWindow while process is active');
 end;
 
@@ -338,7 +349,6 @@ var
   BytesRead: DWord;
   Buffer: Pointer;
 begin
-
   GetMem(Buffer, FAvailable);
   try
     if not ReadFile(FPipeOutput.hRead, Buffer^, FAvailable, BytesRead, nil) then
@@ -346,8 +356,8 @@ begin
       FThread.Terminate;
       WinError('Error reading STDOUT pipe : ');
     end;
-    if Assigned(FOnCommonData) then
-      FOnCommonData(FOnData, Buffer, BytesRead);
+    if Assigned(FOnData) then
+      FOnData(Self, Buffer, BytesRead);
   finally
     FreeMem(Buffer);
   end;
@@ -365,10 +375,8 @@ begin
       FThread.Terminate;
       WinError('Error reading STDERR pipe : ');
     end;
-    if Assigned(FOnCommonData) then
-    begin
-      FOnCommonData(FOnErrorData, Buffer, BytesRead);
-    end;
+    if Assigned(FOnErrorData) then
+      FOnErrorData(Self, Buffer, BytesRead);
   finally
     FreeMem(Buffer);
   end;
@@ -377,11 +385,11 @@ end;
 procedure TRedirector.ProcessTerminated;
 begin
   FThread.Terminate;
-  if Assigned(FOnTerminated) then FOnTerminated(Self);
   ClosePipes;
   CloseHandle(FProcessInfo.hProcess);
   CloseHandle(FProcessInfo.hThread);
   FillChar(FProcessInfo, SizeOf(FProcessInfo), 0);
+  if Assigned(FOnTerminated) then FOnTerminated(Self);  //-- moved from 2nd line to last line! (hdo, 2001-09-02)
 end;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -390,13 +398,11 @@ end;
 
 procedure TRedirector.Terminate(dwExitCode: Integer);
 begin
-  if Running then
+  if Running
+    then
     TerminateProcess(ProcessHandle, dwExitCode)
   else
     Error('Cannot Terminate an inactive process');
-
-  if WaitForSingleObject(ProcessHandle, 1000) = WAIT_TIMEOUT then
-    MessageBox(GetActiveWindow, 'Unable to close encoder/decoder process....', '', 0);
 end;
 
 procedure TRedirector.Execute;
@@ -444,7 +450,8 @@ begin
     if CreateProcess(szExecutable, szCommandline, nil, nil, true,
       (CREATE_DEFAULT_ERROR_MODE and Integer(FDefaultErrorMode))
       or (CREATE_SUSPENDED and Integer(FStartSuspended) or liPriorityClass),
-      Environment, szDirectory, StartupInfo, FProcessInfo) then
+      Environment, szDirectory, StartupInfo, FProcessInfo)
+      then
     begin
       FThread := TRedirectorThread.Create(Self);
     end
@@ -467,7 +474,8 @@ var
   BytesWritten: DWord;
 begin
   if not Running then Error('Can''t send data to an inactive process');
-  if not WriteFile(FPipeInput.hWrite, Buffer^, BufferSize, BytesWritten, nil) then WinError('Error writing to STDIN pipe : ');
+  if not WriteFile(FPipeInput.hWrite, Buffer^, BufferSize, BytesWritten, nil)
+    then WinError('Error writing to STDIN pipe : ');
 end;
 
 procedure TRedirector.SendText(s: string);
@@ -521,19 +529,28 @@ begin
       100) = WAIT_OBJECT_0) then
     begin
       FRedirector.FLastData := true;
-      //-- check for StdOutout-Pipe a last time
-      if PeekNamedPipe(FRedirector.FPipeOutput.hRead, nil, 0, nil,
-        @FRedirector.FAvailable, nil) and (FRedirector.FAvailable > 0) then
-      begin
-        Synchronize(FRedirector.ReadStdOutput);
-      end;
 
-      //-- check for StdErr-Pipe a last time
-      if PeekNamedPipe(FRedirector.FPipeError.hRead, nil, 0, nil,
-        @FRedirector.FAvailable, nil) and (FRedirector.FAvailable > 0) then
-      begin
-        Synchronize(FRedirector.ReadStdError);
-      end;
+      //-- process has finished, read pipes until they are empty
+      repeat
+        Idle := true;
+
+        //-- check for StdOutout-Pipe a last time
+        if PeekNamedPipe(FRedirector.FPipeOutput.hRead, nil, 0, nil,
+          @FRedirector.FAvailable, nil) and (FRedirector.FAvailable > 0) then
+        begin
+          Synchronize(FRedirector.ReadStdOutput);
+          Idle := false;
+        end;
+
+        //-- check for StdErr-Pipe a last time
+        if PeekNamedPipe(FRedirector.FPipeError.hRead, nil, 0, nil,
+          @FRedirector.FAvailable, nil) and (FRedirector.FAvailable > 0) then
+        begin
+          Synchronize(FRedirector.ReadStdError);
+          Idle := false;
+        end;
+
+      until Idle;
 
       //-- self-destruct
       if not Terminated then Synchronize(FRedirector.ProcessTerminated);
@@ -542,13 +559,4 @@ begin
   until Terminated and Idle;
 end;
 
-procedure TRedirector.Suspend(suspend: boolean);
-begin
-  if suspend then
-    SuspendThread(ThreadHandle)
-  else
-    ResumeThread(ThreadHandle);
-end;
-
 end.
-

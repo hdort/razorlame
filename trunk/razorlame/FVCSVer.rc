@@ -1,6 +1,6 @@
 1 VERSIONINFO LOADONCALL MOVEABLE DISCARDABLE IMPURE
-FILEVERSION 1,2,0,1059
-PRODUCTVERSION 1,2,0,1059
+FILEVERSION 1,1,5,1342
+PRODUCTVERSION 1,1,5,1342
 FILEOS VOS__WINDOWS32
 FILETYPE VFT_APP
 {
@@ -10,18 +10,18 @@ FILETYPE VFT_APP
   {
    VALUE "CompanyName", "\000"
    VALUE "FileDescription", "A front-end for lame.exe\000"
-   VALUE "FileVersion", "1.2.0.1059\000"
-   VALUE "ProductVersion", "1.2.0.1059\000"
+   VALUE "FileVersion", "1.1.5.1342\000"
+   VALUE "ProductVersion", "1.1.5.1342\000"
    VALUE "InternalName", "RazorLame.dpr\000"
    VALUE "OriginalFilename", "RazorLame\000"
-   VALUE "LegalCopyright", "Copyright © Copyright © Holger Dors\000"
+   VALUE "LegalCopyright", "Holger Dors 2000 - 2001\000"
    VALUE "ProductName", "RazorLame\000"
    VALUE "LegalTrademarks", "All rights reserved\000"
    VALUE "Author", "Holger Dors\000"
    VALUE "BuildType", "ReleaseBuild\000"
-   VALUE "BuildTimestamp", "03.03.2001 18:42:10\000"
-   VALUE "InternalVersion", "0.8\000"
-   VALUE "VCS", "FreeVCS 2.2.0.0 http://www.freevcs.de\000"
+   VALUE "BuildTimestamp", "11.12.2001 23:04:00\000"
+   VALUE "InternalVersion", "0.9\000"
+   VALUE "VCS", "FreeVCS  http://www.freevcs.de\000"
   }
  }
  BLOCK "VarFileInfo"
