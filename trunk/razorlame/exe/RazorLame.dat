@@ -34,6 +34,8 @@
 17=( Binaries downloaded
 18=(Win32 binaries
 19=Warning: many decoders cannot handle free format bitstreams
+20=+ Modification for 
+21=#20#20#20#20Available at 
 
 [DecodeInfoMsgs]
 1=skipping#20
@@ -44,8 +46,9 @@
 6=Input file is freeformat.
 
 [InputFileTypes]
-Audio-Files=*.wav;*.aif;*.aiff;*.mp3;*.mp2;*.mp1
+Audio-Files=*.wav;*.aif;*.aiff;*.mp3;*.mp2;*.mp1;*.ape
 Wave-Files (*.wav)=*.wav
 MP3-Files (*.mp3)=*.mp3
 MPx-Files (*.mp?)=*.mp3;*.mp2;*.mp1
 AIFF-Files (*.aif, *.aiff)=*.aif;*.aiff
+Monkey's-Audio-Files (*,ape)=*.ape
