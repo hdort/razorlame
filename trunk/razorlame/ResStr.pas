@@ -12,8 +12,6 @@ Interface
 
 Resourcestring
 
-  ID_ENCODE = 'Encode';
-  ID_CANCEL = 'Cancel';
   ID_STATUS = 'Status=';
   ID_BATCH = 'Batch=';
   ID_WORKING = 'Working on file %d of %d: "%s"';
@@ -29,6 +27,8 @@ Resourcestring
   MSG_ANERROROCCURRED = 'At least one error occurred. Do you want to view the log?';
   MSG_ABORTENCODING = 'Do you want to stop encoding now or stop encoding when the currently processed file is done?';
   MSG_DIFFERENTENCODER = 'The file you''ve selected isn''t named "Lame.exe".'#13#10'Are you sure that you''ve selected the right file?';
+  MSG_OUTDIR_DOES_NOT_EXIST ='The specified output directory "%s" does not exist. Should it be created?';
+  MSG_COULD_NOT_CREATE_OUTDIR ='The directory "%s" could not be created.';
 
   BTN_NOW = 'Stop now';
   BTN_DONE = 'When done';
