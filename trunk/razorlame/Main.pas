@@ -312,7 +312,7 @@ begin
   if not FileExists(ChangeFileExt(LowerCase(Application.ExeName), '.dat')) then
   begin
     MyMessageBox(Format(MSG_NO_DAT_FILE, [ChangeFileExt(LowerCase(Application.ExeName), '.dat')]),
-      MSG_ERROR, MB_ICONEXCLAMATION or MB_OK);
+    MSG_ERROR, MB_ICONEXCLAMATION or MB_OK);
     Application.Terminate;
     exit;
   end;
@@ -327,6 +327,7 @@ begin
   //-- everything else that takes some time should take place
   //-- in the WmAfterCreate event!
   PostMessage(Handle, WM_AFTER_CREATE, 0, 0);
+  mainmenu.images:=images;  //by Mr. C
 end;
 
 procedure TFormMain.FormCloseQuery(Sender: TObject; var CanClose: Boolean);
@@ -613,11 +614,23 @@ begin
   ProcessFiles(poEncode);
 end;
 
+procedure freelistviewdataitems; //-- by Mr. C
+var i:integer;
+begin
+with formmain.ListViewFiles do begin
+   for i:=0 to Items.Count-1 do begin
+       if assigned(tfileitem(items[i].data)) then
+          tfileitem(items[i].data).Free;
+       end;
+   end;
+end;
+
 procedure TFormMain.ActionClearListExecute(Sender: TObject);
 //-- Delete all file from the ListView
 begin
   ListViewFiles.Items.BeginUpdate;
   try
+    freelistviewdataitems; //by Mr. C
     ListViewFiles.Items.Clear;
   finally
     ListViewFiles.Items.EndUpdate;
@@ -635,8 +648,13 @@ begin
     begin
       Items.BeginUpdate;
       try
-        for i := Items.Count - 1 downto 0 do
-          if Items[i].Selected then Items.Delete(i);
+        for i := Items.Count - 1 downto 0 do begin
+          if Items[i].Selected then begin
+             if assigned(tfileitem(items[i].data)) then //by Mr. C
+                tfileitem(items[i].data).Free;
+             Items.Delete(i);                
+             end;
+          end;
       finally
         Items.EndUpdate;
       end;
@@ -1051,6 +1069,8 @@ procedure TFormMain.FormDestroy(Sender: TObject);
 begin
   //-- destroy controls
   Redirector.Free;
+  if listviewfiles.items.count<>0 then
+     freelistviewdataitems; // zo zijn alle references dan ook verwijderd!
 end;
 
 procedure TFormMain.OnEncodeData(Sender: TRedirector; Buffer: Pointer;
@@ -1238,7 +1258,7 @@ begin
           ProgressForm.LabelBatchRemaining.Caption := FormatDateTime('h:nn:ss', ldtEstimatedTime - ldtElapsedTime);
         end;
 
-        //-- todo: multi-line hint?
+         //-- todo: multi-line hint?
         with Global do
           TrayIcon.ToolTip := Format(TRAY_HINT, [CurrentFile, FilePercent, BatchPercent]);
         Application.Title := '[' + IntToStr(Global.BatchPercent) + '%] ' + APP_TITLE;
@@ -1359,7 +1379,7 @@ begin
       DeleteZeroByteFile(lsFile);
 
       //-- add a note about the error
-      Global.Log.Add(Format('RazorLame encountered an unknown message from LAME while trying to encode "%s"!',
+      Global.Log.Add(Format('AdvaLame Suite encountered an unknown message from LAME while trying to encode "%s"!',
         [Global.CurrentFileFullname]));
     end;
 
@@ -1455,6 +1475,8 @@ begin
       end;
     1: SortAs := saNumeric;
     2: SortAs := saDateTime;
+    else
+       sortas:=sastring;  // added for sorting of filetype (mpx/wave) (c) 2003 Mr. C
   end;
 
 end;
@@ -1545,7 +1567,7 @@ begin
             Left := Self.Left + (Self.Width - Width) div 2;
             MemoLog.Lines.Assign(Global.Log);
             ShowModal;
-            //-- Save the log
+              //-- Save the log
             Global.Log.SaveToFile(ChangeFileExt(Application.Exename, '.log'));
           end;
         finally
@@ -1802,7 +1824,7 @@ begin
           ProgressForm.LabelBatchRemaining.Caption := FormatDateTime('h:nn:ss', ldtEstimatedTime - ldtElapsedTime);
         end;
 
-        //-- todo: multi-line hint?
+         //-- todo: multi-line hint?
         with Global do
           TrayIcon.ToolTip := Format(TRAY_HINT, [CurrentFile, FilePercent, BatchPercent]);
         Application.Title := '[' + IntToStr(Global.BatchPercent) + '%] ' + APP_TITLE;
@@ -1897,7 +1919,7 @@ begin
       DeleteZeroByteFile(lsFile);
 
       //-- add a note about the error
-      Global.Log.Add(Format('RazorLame encountered an unknown message from LAME while trying to decode "%s"!',
+      Global.Log.Add(Format('AdvaLame Suite  encountered an unknown message from LAME while trying to decode "%s"!',
         [Global.CurrentFileFullname]));
     end;
 
@@ -1954,7 +1976,7 @@ end;
 procedure TFormMain.MailAuthor1Click(Sender: TObject);
 begin
   ShellExecute(HInstance, nil,
-    PChar('mailto:Razor.Blade@gmx.net?subject='
+    PChar('mailto:avcsuite@fastmail.fm?subject='
     + StringReplace(RL_VERSION, ' ', '%20', [rfReplaceAll])),
     nil, nil, SW_SHOW);
 end;
@@ -1989,7 +2011,7 @@ end;
 
 procedure TFormMain.Documentation1Click(Sender: TObject);
 begin
-  ShellExecute(HInstance, nil, 'RazorLame.html', nil, nil, SW_SHOW);
+  ShellExecute(HInstance, nil, pchar(extractfilepath(application.exename)+'RazorLame.html'), nil, nil, SW_SHOW); //by Mr. C
 end;
 
 procedure TFormMain.AddFilesToList(Files: TStrings);
@@ -2044,7 +2066,8 @@ procedure TFormMain.ListViewFilesDblClick(Sender: TObject);
 begin
   //-- execute that file! If we have one!
   if assigned(ListViewFiles.Selected) then
-    ShellExecute(HInstance, nil, PChar(IncludeTrailingBackslash(TFileItem(ListViewFiles.ItemFocused.Data).Path) + TFileItem(ListViewFiles.Selected.Data).Filename), nil, nil, SW_SHOW);
+     // ShellExecute(HInstance, nil, PChar(ListViewFiles.ItemFocused.SubItems[0]+listviewfiles.ItemFocused.caption), nil, nil, SW_SHOW); // modified data by Mr. C, prevents leaks!!!!!
+     ShellExecute(HInstance, nil, PChar(IncludeTrailingBackslash(TFileItem(ListViewFiles.ItemFocused.Data).Path) + TFileItem(ListViewFiles.Selected.Data).Filename), nil, nil, SW_SHOW);
 end;
 
 procedure TFormMain.ActionAddFolderExecute(Sender: TObject);
