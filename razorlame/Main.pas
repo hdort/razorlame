@@ -717,6 +717,7 @@ begin
   ActionToolbarCaptions.Checked := Toolbar.ShowCaptions and not Assigned(Toolbar.Images);
 
   ActionViewLog.Enabled := Global.Log.Count > 0;
+  Handled := true;
 end;
 
 procedure TFormMain.ActionToolbarIconsExecute(Sender: TObject);
