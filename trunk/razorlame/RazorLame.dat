@@ -1,0 +1,47 @@
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;
+;W A R N I N G ! ! !
+;
+;Do not change this file!
+; 
+;This file came with RazorLame and is likely to be changed
+;with every new version of it.
+;
+;Even worse, changes in this file might cause RazorLame
+;to stop working properly.
+;
+;So don't change this file, you have been warned!!!!!
+;
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+[EncodeInfoMsgs]
+1=LAME version#20
+2=GPSYCHO:#20
+3=Using#20
+4=Autoconverting#20
+5=Resampling:#20
+6=Win32 binaries from#20
+7=win32 binaries from#20
+8=polyphase lowpass filter#20
+9=CPU features#20
+10=using#20
+11=Can't step back#20
+12=Xing VBR header dectected.#20
+13=Xing VBR header detected.#20
+14=CPU features:#20
+15=#20#20#20#20#20#20to
+16=#20Executable downloaded#20
+
+[DecodeInfoMsgs]
+1=skipping#20
+2=Can't step back#20
+3=Xing VBR header dectected.#20
+4=Xing VBR header detected.#20
+5=#09(
+
+[InputFileTypes]
+Audio-Files=*.wav;*.aif;*.aiff;*.mp3;*.mp2;*.mp1
+Wave-Files (*.wav)=*.wav
+MP3-Files (*.mp3)=*.mp3
+MPx-Files (*.mp?)=*.mp3;*.mp2;*.mp1
+AIFF-Files (*.aif, *.aiff)=*.aif;*.aiff
