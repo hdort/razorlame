@@ -20,9 +20,10 @@ const
   WM_DECODE_NEXT_FILE = WM_USER + 3;
   WM_AFTER_CREATE = WM_USER + 4;
   WM_PASSED_FROM_INSTANCE = WM_USER + 5;
+  WM_PROGRESS_CLOSING = WM_USER + 6;
 
 const
-  RL_VERSION = 'RazorLame 1.1.3';
+  RL_VERSION = 'RazorLame 1.2.0';
   LOG_FILENAME = 'RazorLame.log';
 
   LAME_HOMEPAGE = 'http://www.mp3dev.org/';
@@ -79,6 +80,7 @@ type
     NoShort: Boolean;
     ISO: Boolean;
     CustomOptions: string;
+    CustomMRU: TStringList;
     OnlyCustomOptions: Boolean;
     OutDir: string;
     DeleteFileAfterProcessing: Boolean;
@@ -87,8 +89,9 @@ type
   end;
 
   TGlobalVars = record
-    Encoder: string;
-    FilesToEncode: Integer;
+    LameEncoder: string;
+    FaacEncoder: string;
+    DefaultEncoder: string;
     FilesEncoded: Integer;
     FilesWithErrors: Integer;
     Log: TStringList;
@@ -96,16 +99,16 @@ type
     ErrorOccurredInBatch: Boolean;
     CurrentFileFullname: string;
     CurrentFile: string;
+    CurrentOutputFile: string;
     FilePercent: Integer;
     BatchPercent: Integer;
     StopWhenDone: Boolean;
     LastOpenDir: string;
     StatusMessages: Boolean;
     VBRHistogram: Boolean;
-    TotalSize: Int64;
-    CurrentSize: Int64;
     LastSize: Int64;
     CurrentItemSize: Int64;
+    CurrentItemFrames: Int64; //used when _decoding_
     BatchStart: TDateTime;
     FileStart: TDateTime;
     LastLine: string;
@@ -120,6 +123,11 @@ type
     LastStatusUpdate: TDateTime;
     ThreadPriority: TThreadPriority;
     ShutdownFlag: TShutdownFlag;
+    ShowProgress: boolean;
+    PreviewMode: boolean;
+    AutoDelete: boolean;
+    ExcerptLength: Integer;
+    ExcerptPosition: Integer;
   end;
 
   TFileItem = class(TObject)
@@ -150,6 +158,7 @@ begin
   Global.EncoderInfoStrings := TStringList.Create;
   Global.DecodeInfoStrings := TStringList.Create;
   Global.BRHistogram := TStringList.Create;
+  MP3Settings.CustomMRU := TStringList.Create;
 end;
 
 procedure FreeGlobals;
@@ -159,6 +168,7 @@ begin
   Global.EncoderInfoStrings.Free;
   Global.DecodeInfoStrings.Free;
   Global.BRHistogram.Free;
+  MP3Settings.CustomMRU.Free;
 end;
 
 initialization

@@ -12,7 +12,6 @@ uses
   Forms,
   registry,
   windows,
-  Main in 'Main.pas' {FormMain},
   ResStr in 'ResStr.pas',
   UtilFuncs in 'UtilFuncs.pas',
   globals in 'globals.pas',
@@ -22,22 +21,21 @@ uses
   Log in 'Log.pas' {FormLog},
   Shutdown in 'Shutdown.pas' {FormShutdown},
   Redirect in 'Redirect.pas',
-  options in 'options.pas' {FormOptions};
+  options in 'options.pas' {FormOptions},
+  WAVTools in 'WAVTools.pas',
+  Main in 'Main.pas' {FormMain};
 
 {$R *.RES}
 {$R FVCSVER.RES}
 
 var
-  handle: HWND;
+  Handle: HWND = 0;
 
 begin
-  handle := 0;
-
   Application.Initialize;
   Application.Title := 'RazorLame';
-
-  if not EnumWindows(@EnumFunc, longint(@handle)) then
-    PassToOtherInstance(handle)
+  if not EnumWindows(@EnumFunc, LongInt(@Handle)) then
+    PassToOtherInstance(Handle)
   else
   begin
     Application.CreateForm(TFormMain, FormMain);

@@ -15,7 +15,7 @@ interface
 uses
   Windows, Messages, SysUtils, Classes, Controls, Forms, Dialogs,
   StdCtrls, ComCtrls, ExtCtrls, ToolWin, Menus,
-  EnhListView, ImgList, ActnList, Redirect, TrayIcon, SystemImageList, Globals;
+  EnhListView, ImgList, ActnList, TrayIcon, SystemImageList, Globals, WAVTools, Redirect;
 
 type
   TProcessOperation = (poEncode, poDecode);
@@ -106,6 +106,22 @@ type
     dfsSystemImageList1: TdfsSystemImageList;
     ActionLameOptions: TAction;
     LAMEOptions1: TMenuItem;
+    ToolButtonShowProgress: TToolButton;
+    ToolButton2: TToolButton;
+    ToolButtonPreview: TToolButton;
+    ActionPreview: TAction;
+    ToolButtonRequeue: TToolButton;
+    ActionRequeue: TAction;
+    Preview1: TMenuItem;
+    N9: TMenuItem;
+    PopupMenuEncoder: TPopupMenu;
+    Lame1: TMenuItem;
+    ActionEncodeLame: TAction;
+    ActionEncodeFaac: TAction;
+    EncodewithFAAC1: TMenuItem;
+    Preview2: TMenuItem;
+    Requeue1: TMenuItem;
+    ActionSelectAll: TAction;
     procedure FormCreate(Sender: TObject);
     procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
     procedure ListViewFilesChange(Sender: TObject; Item: TListItem;
@@ -146,6 +162,18 @@ type
     procedure RazorLameWebForum1Click(Sender: TObject);
     procedure Documentation1Click(Sender: TObject);
     procedure ActionLameOptionsExecute(Sender: TObject);
+    procedure SuspendLame(suspend: boolean);
+    procedure ToolButtonShowProgressClick(Sender: TObject);
+    procedure ActionPreviewExecute(Sender: TObject);
+    procedure ActionRequeueExecute(Sender: TObject);
+    procedure ProcessLineLAMEEncode(const Line: string);
+    procedure ProcessLineFAACEncode(const Line: string);
+    procedure ProcessLineLAMEDecode(const Line: string);
+    procedure CommonProcessData(const OnData: TDataEvent; Buffer: Pointer;
+      Size: Integer);
+    procedure ActionEncodeLameExecute(Sender: TObject);
+    procedure ActionEncodeFaacExecute(Sender: TObject);
+    procedure ActionSelectAllExecute(Sender: TObject);
   private
     { Private declarations }
     Redirector: TRedirector;
@@ -153,14 +181,11 @@ type
     procedure AppRestore(Sender: TObject);
     procedure OnEncodeTerminated(Sender: TObject);
     procedure OnDecodeTerminated(Sender: TObject);
-    procedure OnEncodeData(Sender: TRedirector; Buffer: Pointer; Size: Integer);
-    procedure OnDecodeData(Sender: TRedirector; Buffer: Pointer; Size: Integer);
     procedure AddFilesToList(Files: TStrings);
-    procedure AddFileToList(asFile: string; abSaveFileList: Boolean = true);
+    procedure AddFileToList(const asFilename: string; abSaveFileList: Boolean = true);
     procedure AddFolderToList(asFolder: string);
+    procedure AddPlaylistToList(const asFilename: string; abSaveFileList: Boolean);
     procedure UpdateStatusbar;
-    procedure RemoveFileFromList(asFile: string);
-    procedure MoveFileToListBottom(asFile: string);
     procedure SaveFileList;
     procedure LoadFileList;
     procedure ItemDeleted(var Message: TMessage); message WM_ITEM_DELETED;
@@ -169,12 +194,25 @@ type
     procedure WmDropFiles(var Message: TWMDropFiles); message WM_DROPFILES;
     procedure WmAfterCreate(var Message: TMessage); message WM_AFTER_CREATE;
     procedure WmPassedFromInstance(var Message: TMessage); message WM_PASSED_FROM_INSTANCE;
+    procedure WmProgressClosing(var Message: TMessage); message WM_PROGRESS_CLOSING;
     procedure Initialize;
+    procedure DisplayCurrentFileStatus(const asMsg: string);
     function EncoderFound: Boolean;
     function CheckExistingFiles(const asExtension: string): Boolean;
     procedure ProcessFiles(aOperation: TProcessOperation);
     function ProcessNextFile(const aOperation: TProcessOperation): Boolean;
+    function ProcessFileByInfo(const lsCmd, lsFilename, lsFileFolder: string; const Size: Int64): Boolean;
     function CheckOutputDiffersInput(const asExtension: string): Boolean;
+    function GetNextAvailableItemIndex: Integer;
+    function GetNumberFilesRemaining: Integer;
+    function GetTotalSize: Integer;
+    function GetLastSize: Integer;
+    function GetRemainingSize: Int64;
+    function GetItemStatus(const Item: TListItem): string;
+    procedure SetupRedirector(aOperation: TProcessOperation);
+    procedure FinishPreview;
+    procedure CalculateBatchPercent;
+    procedure SetupGlobals;
   public
     { Public declarations }
   end;
@@ -214,8 +252,10 @@ begin
   //-- set defaults
   with Global do
   begin
-    Encoder := ExtractFilePath(Application.ExeName) + 'Lame.exe';
-    FilesToEncode := 0;
+    LameEncoder := ExtractFilePath(Application.ExeName) + 'Lame.exe';
+    FaacEncoder := '';
+    DefaultEncoder := LameEncoder;
+    AutoDelete := true;
     LastOpenDir := '';
     ThreadPriority := tpIdle;
     ShutdownFlag := sfShutdown;
@@ -297,7 +337,7 @@ begin
   if Redirector.Running then Redirector.Terminate(0); {TODO: Check if 0 is correct code!}
 end;
 
-procedure TFormMain.AddFileToList(asFile: string; abSaveFileList: Boolean = true);
+procedure TFormMain.AddFileToList(const asFilename: string; abSaveFileList: Boolean = true);
 var
   lsCaption, lsPath, lsType, lsExt: string;
   MyItem: TListItem;
@@ -306,16 +346,25 @@ var
   liSize, liBitrate: integer;
 begin
   //-- don't add files that don't exist!
-  if not FileExists(asFile) then Exit;
+  if not FileExists(asFilename) then Exit;
+
+  //-- Determine File-Extension
+  lsExt := LowerCase(ExtractFileExt(asFilename));
+
+  //-- Is this a playlist?
+  if (lsExt = '.m3u') or (lsExt = '.pls') then
+  begin
+    AddPlaylistToList(asFilename, abSaveFileList);
+    exit;
+  end;
 
   //-- if file extension isn't a supported audio
   //-- type, ignore it!
-  lsExt := LowerCase(ExtractFileExt(asFile));
   if not IsExtensionAllowed(lsExt) then Exit;
 
   //-- seperate filename and path
-  lsCaption := ExtractFilename(asFile);
-  lsPath := ExtractFilePath(asFile);
+  lsCaption := ExtractFilename(asFilename);
+  lsPath := ExtractFilePath(asFilename);
 
   //-- check if this file isn't already in the list
   //-- this takes the most time when adding many files! (ca. 66% time is spent here for 350 files)
@@ -328,14 +377,14 @@ begin
   end;
 
   //-- determine file information
-  DetermineFileInfo(asFile, liSize, liBitrate, ldtLen);
+  DetermineFileInfo(asFilename, liSize, liBitrate, ldtLen);
 
   //-- create and initialize new item
   NewFileItem := TFileItem.Create;
   NewFileItem.Filename := lsCaption;
   NewFileItem.Path := lsPath;
   NewFileItem.Size := liSize;
-  NewFileItem.Date := FileDateTime(asFile);
+  NewFileItem.Date := FileDateTime(asFilename);
   NewFileItem.Length := ldtLen;
   NewFileItem.Bitrate := liBitrate;
 
@@ -344,21 +393,33 @@ begin
     //-- Add the file
     Caption := NewFileItem.Filename;
     //-- Add Icon
-    ImageIndex := dfsSystemImageList1.GetFileInformation(asFile, false, false, [], lsType);
+    ImageIndex := dfsSystemImageList1.GetFileInformation(asFilename, false, false, [], lsType);
     //-- if no type is returned, just give the extionsion of the file as type
-    if lsType = '' then lsType := AnsiUpperCase(Copy(ExtractFileExt(asFile), 2, MaxInt)) + ' file';
+    if lsType = '' then lsType := AnsiUpperCase(Copy(ExtractFileExt(asFilename), 2, MaxInt)) + ' file';
     SubItems.Add(NewFileItem.Path);
     SubItems.Add(Format('%.0n', [NewFileItem.Size * 1.0]));
     if NewFileItem.Bitrate > 0 then
-      SubItems.Add(IntToStr(NewFileItem.Bitrate) + 'kbps')
+      SubItems.Add(IntToStr(NewFileItem.Bitrate))
     else
-      SubItems.Add('');
-    if NewFileItem.Length > 0 then
+      if NewFileItem.Bitrate < 0 then
+      SubItems.Add(IntToStr(-1 * NewFileItem.Bitrate) + ' (average)')
+    else
+      SubItems.Add('?');
+
+    if NewFileItem.Length > 1 / 24 then //1/24th of a day....
+      SubItems.Add(FormatDateTime('h:nn:ss', NewFileItem.Length))
+    else
+      if NewFileItem.Length > 10 / (24 * 60) then //10 minutes
       SubItems.Add(FormatDateTime('nn:ss', NewFileItem.Length))
     else
-      SubItems.Add('');
+      if NewFileItem.Length > 1 / (24 * 60 * 60) then //1 second
+      SubItems.Add(FormatDateTime('n:ss', NewFileItem.Length))
+    else
+      SubItems.Add(FormatDateTime('n:ss.z', NewFileItem.Length));
+
     SubItems.Add(FormatDateTime('ddddd t', NewFileItem.Date));
     SubItems.Add(lsType);
+    SubItems.Add(ID_WAITING);
     Data := Pointer(NewFileItem);
   end;
 
@@ -367,72 +428,6 @@ begin
 
   //-- Save the new list if wanted
   if abSaveFileList then SaveFileList;
-end;
-
-procedure TFormMain.RemoveFileFromList(asFile: string);
-var
-  lsCaption, lsPath: string;
-  MyItem: TListItem;
-begin
-  lsCaption := ExtractFilename(asFile);
-  lsPath := ExtractFilePath(asFile);
-
-  //-- search for this file
-  MyItem := ListViewFiles.FindCaption(0, lsCaption, false, true, false);
-  while Assigned(MyItem) do
-  begin
-    if MyItem.SubItems[0] = lsPath then Break; //-- File found!
-    //-- continue with the search!
-    MyItem := ListViewFiles.FindCaption(MyItem.Index, lsCaption, false, false, false);
-  end;
-
-  if Assigned(MyItem) then
-  begin
-    //-- Found an item, remove this from the list
-    ListViewFiles.Items.Delete(ListViewFiles.Items.IndexOf(MyItem));
-    //-- destroy the data
-    if Assigned(MyItem.Data) then TFileItem(MyItem.Data).Free;
-    //-- now update status line
-    UpdateStatusbar;
-    //-- save this changed list!
-    SaveFileList;
-  end;
-end;
-
-procedure TFormMain.MoveFileToListBottom(asFile: string);
-var
-  lsCaption, lsPath: string;
-  MyItem: TListItem;
-begin
-  lsCaption := ExtractFilename(asFile);
-  lsPath := ExtractFilePath(asFile);
-
-  //-- search for this file
-  MyItem := ListViewFiles.FindCaption(0, lsCaption, false, true, false);
-  while Assigned(MyItem) do
-  begin
-    if MyItem.SubItems[0] = lsPath then Break; //-- File found!
-    //-- continue with the search!
-    MyItem := ListViewFiles.FindCaption(MyItem.Index, lsCaption, false, false, false);
-  end;
-
-  if Assigned(MyItem) then
-  begin
-    //-- Found an item, move this to the bottom of the list
-    with ListViewFiles.Items do
-    begin
-      BeginUpdate; {todo: call ListViewFiles.BeginUpdate}
-      try
-        with Insert(ListViewFiles.Items.Count) do
-          Assign(MyItem);
-        Delete(IndexOf(MyItem));
-      finally
-        EndUpdate;
-      end;
-    end;
-    //-- save this changed list!
-    SaveFileList;
-  end;
 end;
 
 procedure TFormMain.ListViewFilesChange(Sender: TObject; Item: TListItem;
@@ -459,10 +454,10 @@ end;
 procedure TFormMain.UpdateStatusbar;
 begin
   case ListviewFiles.Items.Count of
-    0: StatusBar.Panels[0].Text := STATUS_NOFILES;
-    1: StatusBar.Panels[0].Text := STATUS_ONEFILE;
+    0: StatusBar.Panels[1].Text := STATUS_NOFILES;
+    1: StatusBar.Panels[1].Text := STATUS_ONEFILE;
     else
-      StatusBar.Panels[0].Text := Format(STATUS_FILES, [ListviewFiles.Items.Count]);
+      StatusBar.Panels[1].Text := Format(STATUS_FILES, [ListviewFiles.Items.Count]);
   end;
 end;
 
@@ -516,11 +511,18 @@ begin
 end;
 
 function TFormMain.EncoderFound: Boolean;
+var
+  lsMsg: string;
 begin
-  Result := FileExists(Global.Encoder);
+  Result := FileExists(Global.DefaultEncoder);
   if not Result then
   begin
-    MyMessageBox(Format(MSG_NOENCODER, [Global.Encoder]),
+    if Global.DefaultEncoder = Global.LameEncoder then
+      lsMsg := MSG_NOENCODERLAME
+    else
+      lsMsg := MSG_NOENCODERFAAC;
+
+    MyMessageBox(Format(lsMsg, [Global.DefaultEncoder]),
       MSG_HINT, MB_ICONEXCLAMATION or MB_OK);
     ActionOptions.Execute;
   end;
@@ -534,6 +536,8 @@ begin
   Result := false; //-- assume worst-case
   for i := 0 to ListViewFiles.Items.Count - 1 do
   begin
+    if ListViewFiles.Items[i].Subitems[6] <> ID_WAITING then COntinue;
+
     if (Trim(MP3Settings.OutDir) <> '') and DirectoryExists(MP3Settings.OutDir) then
       lsFile := MP3Settings.OutDir
     else
@@ -576,10 +580,22 @@ begin
   end;
 
   //-- check if input <> output files
-  if not CheckOutputDiffersInput('.mp3') then Exit;
+  if Global.DefaultEncoder = Global.FaacEncoder then
+  begin
+    if not CheckOutputDiffersInput('.aac') then Exit;
+  end
+  else
+    if not CheckOutputDiffersInput('.mp3') then
+    Exit;
 
   //-- check if any mp3 files already exist
-  if not CheckExistingFiles('.mp3') then Exit;
+  if Global.DefaultEncoder = Global.FaacEncoder then
+  begin
+    if not CheckExistingFiles('.aac') then Exit;
+  end
+  else
+    if not CheckExistingFiles('.mp3') then
+    Exit;
 
   //-- now process the files!
   ProcessFiles(poEncode);
@@ -595,6 +611,23 @@ begin
     ListViewFiles.Items.EndUpdate;
   end;
   UpdateStatusBar;
+end;
+
+procedure TFormMain.ActionRequeueExecute(Sender: TObject);
+var
+  i: Integer;
+begin
+  with ListViewFiles do
+    if SelCount > 0 then
+    begin
+      Items.BeginUpdate;
+      try
+        for i := Items.Count - 1 downto 0 do
+          if Items[i].Selected then Items[i].SubItems[6] := ID_WAITING; {todo: remove hardcoded index of status!}
+      finally
+        Items.EndUpdate;
+      end;
+    end;
 end;
 
 procedure TFormMain.ActionRemoveExecute(Sender: TObject);
@@ -651,9 +684,11 @@ end;
 procedure TFormMain.ActionListUpdate(Action: TBasicAction;
   var Handled: Boolean);
 begin
-  ActionClearList.Enabled := ListViewFiles.Items.Count > 0;
-  ActionEncode.Enabled := ListViewFiles.Items.Count > 0;
-  ActionDecode.Enabled := ListViewFiles.Items.Count > 0;
+  ActionClearList.Enabled := (ListViewFiles.Items.Count > 0) and not Redirector.Running;
+  ActionEncode.Enabled := (GetNumberFilesRemaining > 0) and not Redirector.Running;
+  ActionDecode.Enabled := (GetNumberFilesRemaining > 0) and not Redirector.Running;
+  ActionPreview.Enabled := (not Redirector.Running) and (ListViewFiles.SelCount > 0);
+  ActionRequeue.Enabled := ListViewFiles.SelCount > 0;
   ActionRemove.Enabled := ListViewFiles.SelCount > 0;
 
   MenuItemViewToolbarDisplay.Enabled := ActionToolbar.Checked;
@@ -819,7 +854,12 @@ begin
     //-- fill the string list
     for i := 0 to ListViewFiles.Items.Count - 1 do
       with TFileItem(ListViewFiles.Items[i].Data) do
-        MyFileList.Add(Path + Filename);
+      begin
+        if GetItemStatus(ListViewFiles.Items[i]) = ID_WAITING then
+        begin
+          MyFileList.Add(Path + Filename);
+        end;
+      end;
     //-- save the string list
     MyFileList.SaveToFile(ChangeFileExt(Application.ExeName, '.lst'));
   finally
@@ -838,11 +878,21 @@ end;
 procedure TFormMain.FormClose(Sender: TObject; var Action: TCloseAction);
 begin
   RegisterFormPosition(FORM_SECTION, Self);
+  WriteOptions;
 end;
 
 procedure TFormMain.ListViewFilesDeletion(Sender: TObject;
   Item: TListItem);
+var
+  lsStatus: string;
 begin
+  {todo: move status stuff into TFileItem!}
+  lsStatus := GetItemStatus(Item);
+
+  //-- Maybe file is in progress: then we should cancel it.
+  if (Pos('%', lsStatus) <> 0) then
+    ProgressForm.Close;
+
   //-- _After_ Deletion we have to update the status bar
   //-- and save the FileList!
   PostMessage(Handle, WM_ITEM_DELETED, 0, 0);
@@ -910,6 +960,31 @@ begin
     end;
   finally
     PopCursor;
+  end;
+
+  StatusBar.Panels[0].Text := 'Ready';
+  StatusBar.Update;
+end;
+
+procedure TFormMain.AddPlaylistToList(const asFilename: string; abSaveFileList: Boolean);
+var
+  Strings: TStringList;
+  lsExt: string;
+  i: Integer;
+begin
+  Strings := TStringList.Create;
+  try
+    lsExt := LowerCase(ExtractFileExt(asFilename));
+    if lsExt = '.m3u' then
+      ParseM3UFile(asFilename, Strings)
+    else
+      if lsExt = '.pls' then
+      ParsePLSFile(asFilename, Strings);
+
+    for i := 0 to Strings.Count - 1 do
+      AddFileToList(Strings[i], abSaveFileList);
+  finally
+    Strings.Free;
   end;
 end;
 
@@ -1010,24 +1085,396 @@ begin
   end;
 end;
 
+procedure TFormMain.ProcessLineFAACEncode(const Line: string);
+var
+  lsPercent: string;
+  liPercent, per: Integer;
+begin
+  ProgressForm.LabelWorking.Caption := 'File: "' + Global.CurrentFile + '"';
+
+  if Copy(Line, 1, 7) = 'Encoder' then
+  begin
+    ProgressForm.LabelVersion.Caption := 'FAAC ' + Line;
+    Exit;
+  end;
+
+  if Copy(Line, 1, 7) = 'Bitrate' then
+  begin
+    ProgressForm.LabelOutput.Caption := ID_OUTPUT + Line;
+    Exit;
+  end;
+
+  per := Pos('%', Line);
+  if per <> 0 then
+  begin
+    lsPercent := Copy(Line, 1, per - 1);
+    if lsPercent = '' then
+      Exit;
+
+    liPercent := Trunc(StrToFloat(lsPercent));
+    if (liPercent > 0) and (liPercent <= 100) then
+    begin
+      ProgressForm.LabelStatus.Caption := ID_STATUS + lsPercent + '%';
+      Global.FilePercent := liPercent;
+      DisplayCurrentFileStatus(IntToStr(liPercent) + '%');
+      ProgressForm.ProgressBarStatus.Position
+        := Round((Global.FilePercent * ProgressForm.ProgressBarStatus.Max) / 100.0);
+    end;
+  end;
+
+  CalculateBatchPercent;
+end;
+
+procedure TFormMain.CalculateBatchPercent;
+var
+  ldtElapsedTime, ldtEstimatedTime: TDateTime;
+  liCurrentSize: Int64;
+begin
+  ldtElapsedTime := Now - Global.BatchStart;
+  ProgressForm.LabelBatchElapsed.Caption := FormatDateTime('h:nn:ss', ldtElapsedTime);
+
+  liCurrentSize := GetLastSize + ((Global.CurrentItemSize * Global.FilePercent) div 100);
+  Global.BatchPercent := (100 * liCurrentSize) div GetTotalSize;
+  ProgressForm.LabelBatch.Caption := ID_BATCH + IntToStr(Global.BatchPercent) + '%';
+  ProgressForm.ProgressBarBatch.Position
+    := Round((Global.BatchPercent * ProgressForm.ProgressBarBatch.Max) / 100.0);
+
+  if liCurrentSize > 0 then
+  begin
+    ldtEstimatedTime := (ldtElapsedTime * GetTotalSize) / liCurrentSize;
+    ProgressForm.LabelBatchEstimated.Caption := FormatDateTime('h:nn:ss', ldtEstimatedTime);
+    ProgressForm.LabelBatchRemaining.Caption := FormatDateTime('h:nn:ss', ldtEstimatedTime - ldtElapsedTime);
+  end;
+end;
+
+procedure TFormMain.ProcessLineLAMEEncode(const Line: string);
+var
+  lsLastStatus: string;
+  lsPercent: string;
+  liPercent, j: Integer;
+  lbFound: boolean;
+begin
+   //-- Lame Version
+
+  if Copy(Line, 1, 4) = 'LAME' then
+    ProgressForm.LabelVersion.Caption := Line;
+
+  //-- we have a special case when vbr is used:
+  //-- perhaps we get a histogram!
+  if Copy(Line, 1, 30) = '----- bitrate statistics -----' then
+  begin
+    lsLastStatus := Global.LastLine;
+    Global.VBRHistogram := true;
+    Global.Log.Add(Line);
+    Exit;
+  end;
+
+  if Global.VBRHistogram then
+  begin
+    Global.Log.Add(Line);
+    if Copy(Line, 1, 8) = 'average:' then
+      Global.LastLine := lsLastStatus;
+    Exit;
+  end;
+
+  //-- save Histograms
+  if Global.HistoMessages then
+  begin
+
+    Global.BRHistogram.Add(Line);
+    if Copy(Line, 1, 5) = '320 [' then {todo: histograms don't necessarily need to end with 320!}
+    begin
+      //-- End Histogram!
+      Global.HistoMessages := false;
+      ProgressForm.ButtonHistogram.Enabled := true;
+      if ProgressForm.ImageHistogram.visible then
+        ProgressForm.DrawHistogram;
+    end;
+    Exit;
+  end;
+
+   //-- if StatusMessages is set, we should get only status messages
+  if Global.StatusMessages then
+  begin
+    //-- another special case: 3.87 and up provide the bitrate histogram
+    //-- with each progress update!
+    if Copy(Line, 1, 5) = ' 32 [' then {todo: histograms don't necessarily need to start with 32!}
+    begin
+      //-- Start Histogram!
+      Global.HistoMessages := true;
+      Global.BRHistogram.Clear;
+      Global.BRHistogram.Add(Line);
+      Exit;
+    end;
+
+    if Copy(Line, 1, 8) = 'average:' then
+    begin
+      Global.Log.Add(Line);
+      Exit;
+    end;
+
+    //-- Main task: update progress dialog
+    //-- Update display only every 2 seconds!
+    //if (((Now - idtStatusStart) * 24 * 60 * 60) < 0.5) then Continue;
+    //idtStatusStart := now;
+
+    //--          1         2         3         4         5         6         7
+    //-- 123456789012345678901234567890123456789012345678901234567890123456789012345
+    //-- pre 3.87 format:
+    //--     Frame          |  CPU/estimated  |  time/estimated | play/CPU |   ETA
+    //--     50/   235( 21%)| 0:00:01/ 0:00:03| 0:00:00/ 0:00:00|    2.1412| 0:00:00
+    //-- 3.87 format:
+    //--     Frame          |  CPU time/estim | REAL time/estim | play/CPU |    ETA
+    //--   4410/4410  (100%)|    1:05/    1:05|    1:06/    1:06|   1.7625x|    0:00
+
+    //lsPercent := Trim(Copy(Line, 15, 3));
+    if Global.PercentPos = 0 then
+      Global.PercentPos := Pos('%', Line) - 3;
+
+    lsPercent := Trim(Copy(Line, Global.PercentPos, 3));
+    if Copy(lsPercent, 1, 1) = '(' then Delete(lsPercent, 1, 1);
+
+    liPercent := StrToIntDef(lsPercent, 0);
+    if (liPercent > 0) and (liPercent <= 100) then
+    begin
+      ProgressForm.LabelStatus.Caption := ID_STATUS + lsPercent + '%';
+      Global.FilePercent := liPercent;
+      DisplayCurrentFileStatus(IntToStr(liPercent) + '%');
+      ProgressForm.ProgressBarStatus.Position
+        := Round((Global.FilePercent * ProgressForm.ProgressBarStatus.Max) / 100.0);
+    end;
+
+    if Global.PreviewMode then
+    begin
+      StatusBar.Panels[0].Text :=
+        'Preparing preview: ' + IntToStr(liPercent) + '%';
+      UpdateStatusBar;
+    end;
+
+    ProgressForm.LabelStatusRemaining.Caption := Trim(Copy(Line, 68, 9));
+
+
+    //-- Calculate Batch Percent
+    CalculateBatchPercent;
+
+     //-- todo: multi-line hint?
+    with Global do
+      TrayIcon.ToolTip := Format(TRAY_HINT, [CurrentFile, FilePercent, BatchPercent]);
+
+    //-- save the line for summary!
+    Global.LastLine := Line;
+
+    //-- and done!
+    Exit;
+  end;
+
+  //-- if we encounter the first 'Frame' line only status messages follow
+  if Copy(Line, 1, 19) = '    Frame          ' then
+  begin
+    Global.StatusMessages := true;
+    Exit;
+  end;
+
+  //-- write log file. (Sits here as we don't want to add status-lines!
+  Global.Log.Add(Line);
+
+  //-- Check for output format
+  if Copy(Line, 1, 12) = 'Encoding as ' then
+  begin
+    ProgressForm.LabelOutput.Caption := ID_OUTPUT + Trim(Copy(Line, 12, Length(Line)));
+    Exit;
+  end;
+
+  if Copy(Line, 1, 9) = 'Encoding ' then
+  begin
+    ProgressForm.LabelWorking.Caption := 'File: "' + Global.CurrentFile + '"';
+    //-- Status = 0%
+    ProgressForm.LabelStatus.Caption := ID_STATUS + '0%';
+    ProgressForm.ProgressBarStatus.Position := 0;
+    ProgressForm.LabelStatusRemaining.Caption := '?';
+    Exit;
+  end;
+
+  //-- ignore informational messages
+  lbFound := false;
+  for j := 0 to Global.EncoderInfoStrings.Count - 1 do
+    if Copy(Line, 1, Global.EncoderInfoStringsLength[j]) =
+      Global.EncoderInfoStrings[j] then
+    begin
+      lbFound := true;
+      Break;
+    end;
+  if lbFound then Exit;
+
+  //-- everything we haven't catched yet could be an error!
+  Global.ErrorOccurred := true;
+{$IFDEF DEBUG}
+  Global.Log.Add('^^^ Error Line! ^^^');
+{$ENDIF}
+end;
+
 procedure TFormMain.FormDestroy(Sender: TObject);
 begin
   //-- destroy controls
   Redirector.Free;
 end;
 
-procedure TFormMain.OnEncodeData(Sender: TRedirector; Buffer: Pointer;
+procedure TFormMain.ProcessLineLAMEDecode(const Line: string);
+var
+  j, liPos1, liPos2, liFrameNo, liFrameTotal, liPercent: Integer;
+  lbFound: Boolean;
+  lsPercent, lsFrameNo, lsFrameTotal: string;
+begin
+  //-- if StatusMessages is set, we should get only status messages
+  if Global.StatusMessages then
+  begin
+    //--          1         2         3         4         5         6         7
+    //-- 123456789012345678901234567890123456789012345678901234567890123456789012345
+    //-- Frame# 5 [ 3674]  128kbs
+    //-- Frame#     1/9292     1 kbps (starting with 3.86 beta!)
+
+    //-- Calculate File Percent
+    //-- check what version!
+    liPos1 := Pos('[', Line);
+    if liPos1 > 0 then
+    begin //-- pre 3.86
+      liPos2 := Pos(']', Line);
+      lsFrameNo := Trim(Copy(Line, 7, liPos1 - 7));
+      lsFrameTotal := Trim(Copy(Line, liPos1 + 1, liPos2 - liPos1 - 1));
+    end
+    else
+    begin //-- post 3.86
+      liPos1 := Pos('/', Line);
+      lsFrameNo := Trim(Copy(Line, 7, liPos1 - 7));
+      lsFrameTotal := Trim(Copy(Line, liPos1 + 1, 7));
+    end;
+
+    liFrameNo := StrToIntDef(lsFrameNo, 0);
+
+    if Global.CurrentItemFrames = 0 then
+      liFrameTotal := StrToIntDef(lsFrameTotal, 0)
+    else
+      liFrameTotal := Global.CurrentItemFrames;
+
+    if liFrameTotal > 0 then
+    begin
+      liPercent := liFrameNo * 100 div liFrameTotal;
+      if (liPercent > 0) and (liPercent <= 100) then
+      begin
+        ProgressForm.LabelStatusRemaining.Caption := FormatDateTime('h:nn:ss',
+          (Now - Global.FileStart) - ((Now - Global.FileStart) * Global.CurrentItemSize) / (Global.CurrentItemSize * liPercent div 100));
+        Global.FilePercent := liPercent;
+
+        lsPercent := IntToStr(Global.FilePercent);
+        ProgressForm.LabelStatus.Caption := ID_STATUS + lsPercent + '%';
+        ProgressForm.ProgressBarStatus.Position
+          := Round((Global.FilePercent * ProgressForm.ProgressBarStatus.Max) / 100.0);
+
+        DisplayCurrentFileStatus(IntToStr(liPercent) + '%');
+      end;
+    end;
+    {We do get some corrupted lines now and then; I believe this
+    comes from the buffer "wrapping" over to the next portion to
+    be read. Could probably be handled by checking for a proper
+    CR/LF at the end of each buffer, the rest shoudl be prepended
+    to the next buffer. Not sure if I bother enough to really do this...}
+    {
+    else
+    begin
+      Global.ErrorOccurred := true;
+      Global.Log.Add(Line);
+    end;}
+
+    //-- Calculate Batch Percent
+    CalculateBatchPercent;
+
+     //-- todo: multi-line hint?
+    with Global do
+      TrayIcon.ToolTip := Format(TRAY_HINT, [CurrentFile, FilePercent, BatchPercent]);
+
+    //-- save the line for summary!
+    Global.LastLine := Line;
+
+    //-- and done!
+    Exit;
+  end;
+
+  //-- if we encounter the first 'Frame#' line only status messages follow
+  if Copy(Line, 1, 7) = 'Frame# ' then
+  begin
+    Global.StatusMessages := true;
+    Exit;
+  end;
+
+  //-- write log file. (Sits here as we don't want to add status-lines!
+  Global.Log.Add(Line);
+
+  //-- Check for output format
+  if Copy(Line, 1, 8) = 'output: ' then
+  begin
+    ProgressForm.LabelOutput.Caption := ID_OUTPUT + '.WAV';
+    Exit;
+  end;
+
+  if Copy(Line, 1, 7) = 'input: ' then
+  begin
+    ProgressForm.LabelWorking.Caption := 'File: "' + Global.CurrentFile + '"';
+    StatusBar.Panels[0].Text := IntToStr(Global.FilesEncoded) + ' decoded, '
+      + IntToStr(GetNumberFilesRemaining) + ' remaining';
+    UpdateStatusBar;
+
+    //-- Status = 0%
+    ProgressForm.LabelStatus.Caption := ID_STATUS + '0%';
+    ProgressForm.ProgressBarStatus.Position := 0;
+    ProgressForm.LabelStatusRemaining.Caption := '?';
+    Exit;
+  end;
+
+  //-- ignore informational messages
+  lbFound := false;
+  for j := 0 to Global.DecodeInfoStrings.Count - 1 do
+    if Copy(Line, 1, Global.DecodeInfoStringsLength[j]) =
+      Global.DecodeInfoStrings[j] then
+    begin
+      lbFound := true;
+      Break;
+    end;
+  if lbFound then Exit;
+
+  //-- everything we haven't catched yet could be an error!
+  Global.ErrorOccurred := true;
+{$IFDEF DEBUG}
+  Global.Log.Add('^^^ Error Line! ^^^');
+{$ENDIF}
+end;
+
+procedure TFormMain.CommonProcessData(const OnData: TDataEvent; Buffer: Pointer;
   Size: Integer);
 var
-  i, j, liPercent: Integer;
-  lbFound: Boolean;
-  lsPercent: string;
+  i: Integer;
+  ldtDiff: TDateTime;
   lpcLine: PChar;
-  lsBuffer, Line, lsLastStatus: string;
+  lsBuffer, Line: string;
   MyStringList: TStringList;
-  ldtElapsedTime, ldtEstimatedTime, ldtDiff: TDateTime;
 begin
-  {todo: nur jede Sekunde! Wenn im Tray, dann nur alle 10 Sekunden!!}
+  if not Assigned(ProgressForm) then exit;
+
+  if not Global.PreviewMode then
+  begin
+   //-- update status bar
+    StatusBar.Panels[0].Text := IntToStr(Global.FilesEncoded) + ' processed, '
+      + IntToStr(GetNumberFilesRemaining + 1) + ' remaining';
+    StatusBar.Update;
+  end;
+
+  if ProgressForm.SkipRequest then
+  begin
+    //-- kill LAME process, but not RedirectorThread
+    Redirector.Terminate(0);
+    exit;
+  end;
+
+  {update progress only once per second!  if in tray, only once per 10 seconds!!}
   ldtDiff := Now - Global.LastStatusUpdate;
   if Global.StatusMessages and (ldtDiff < (1 / (24 * 60 * 60))) then
   begin
@@ -1039,6 +1486,7 @@ begin
 
   if Global.StatusMessages and TrayIcon.Active and (ldtDiff < 10 / (24 * 60 * 60)) then
     exit;
+
   Global.LastStatusUpdate := Now;
 
   lpcLine := StrAlloc(Size + 1);
@@ -1071,170 +1519,7 @@ begin
         Global.Log.Add(Line);
         Continue;
       end;
-
-
-      //Lame Version
-
-      if Copy(Line, 1, 4) = 'LAME' then
-        ProgressForm.LabelVersion.Caption := Line;
-
-      //-- we have a special case when vbr is used:
-      //-- perhaps we get a histogram!
-      if Copy(Line, 1, 30) = '----- bitrate statistics -----' then
-      begin
-        lsLastStatus := Global.LastLine;
-        Global.VBRHistogram := true;
-        Global.Log.Add(Line);
-        Continue;
-      end;
-
-      if Global.VBRHistogram then
-      begin
-        Global.Log.Add(Line);
-        if Copy(Line, 1, 8) = 'average:' then
-          Global.LastLine := lsLastStatus;
-        Continue;
-      end;
-
-      //-- save Histograms
-      if Global.HistoMessages then
-      begin
-
-        Global.BRHistogram.Add(Line);
-        if Copy(Line, 1, 5) = '320 [' then
-        begin
-          //-- End Histogram!
-          Global.HistoMessages := false;
-          ProgressForm.ButtonHistogram.Enabled := true;
-          if ProgressForm.ImageHistogram.visible then
-            ProgressForm.DrawHistogram;
-        end;
-        Continue;
-      end;
-
-      //-- if StatusMessages is set, we should get only status messages
-      if Global.StatusMessages then
-      begin
-        //-- another special case: 3.87 and up provide the bitrate histogram
-        //-- with each progress update!
-        if Copy(Line, 1, 5) = ' 32 [' then
-        begin
-          //-- Start Histogram!
-          Global.HistoMessages := true;
-          Global.BRHistogram.Clear;
-          Global.BRHistogram.Add(Line);
-          Continue;
-        end;
-
-        if Copy(Line, 1, 8) = 'average:' then
-        begin
-          Global.Log.Add(Line);
-          Continue;
-        end;
-
-        //-- Main task: update progress dialog
-        //-- Update display only every 2 seconds!
-        //if (((Now - idtStatusStart) * 24 * 60 * 60) < 0.5) then Continue;
-        //idtStatusStart := now;
-
-        //--          1         2         3         4         5         6         7
-        //-- 123456789012345678901234567890123456789012345678901234567890123456789012345
-        //-- pre 3.87 format:
-        //--     Frame          |  CPU/estimated  |  time/estimated | play/CPU |   ETA
-        //--     50/   235( 21%)| 0:00:01/ 0:00:03| 0:00:00/ 0:00:00|    2.1412| 0:00:00
-        //-- 3.87 format:
-        //--     Frame          |  CPU time/estim | REAL time/estim | play/CPU |    ETA
-        //--   4410/4410  (100%)|    1:05/    1:05|    1:06/    1:06|   1.7625x|    0:00
-
-        ldtElapsedTime := Now - Global.BatchStart;
-        ProgressForm.LabelBatchElapsed.Caption := FormatDateTime('h:nn:ss', ldtElapsedTime);
-
-        //lsPercent := Trim(Copy(Line, 15, 3));
-        if Global.PercentPos = 0 then
-          Global.PercentPos := Pos('%', Line) - 3;
-
-        lsPercent := Trim(Copy(Line, Global.PercentPos, 3));
-        if Copy(lsPercent, 1, 1) = '(' then Delete(lsPercent, 1, 1);
-
-        liPercent := StrToIntDef(lsPercent, 0);
-        if (liPercent > 0) and (liPercent <= 100) then
-        begin
-          ProgressForm.LabelStatus.Caption := ID_STATUS + lsPercent + '%';
-          Global.FilePercent := liPercent;
-          ProgressForm.ProgressBarStatus.Position
-            := Round((Global.FilePercent * ProgressForm.ProgressBarStatus.Max) / 100.0);
-        end;
-
-        ProgressForm.LabelStatusRemaining.Caption := Trim(Copy(Line, 68, 9));
-
-        //-- Calculate Batch Percent
-        Global.CurrentSize := Global.LastSize + ((Global.CurrentItemSize * Global.FilePercent) div 100);
-        Global.BatchPercent := (100 * Global.CurrentSize) div Global.TotalSize;
-        ProgressForm.LabelBatch.Caption := ID_BATCH + IntToStr(Global.BatchPercent) + '%';
-        ProgressForm.ProgressBarBatch.Position
-          := Round((Global.BatchPercent * ProgressForm.ProgressBarBatch.Max) / 100.0);
-
-        if Global.CurrentSize > 0 then
-        begin
-          ldtEstimatedTime := (ldtElapsedTime * Global.TotalSize) / Global.CurrentSize;
-          ProgressForm.LabelBatchEstimated.Caption := FormatDateTime('h:nn:ss', ldtEstimatedTime);
-          ProgressForm.LabelBatchRemaining.Caption := FormatDateTime('h:nn:ss', ldtEstimatedTime - ldtElapsedTime);
-        end;
-
-         //-- todo: multi-line hint?
-        with Global do
-          TrayIcon.ToolTip := Format(TRAY_HINT, [CurrentFile, FilePercent, BatchPercent]);
-
-        //-- save the line for summary!
-        Global.LastLine := Line;
-
-        //-- and done!
-        Continue;
-      end;
-
-      //-- if we encounter the first 'Frame' line only status messages follow
-      if Copy(Line, 1, 19) = '    Frame          ' then
-      begin
-        Global.StatusMessages := true;
-        Continue;
-      end;
-
-      //-- write log file. (Sits here as we don't want to add status-lines!
-      Global.Log.Add(Line);
-
-      //-- Check for output format
-      if Copy(Line, 1, 12) = 'Encoding as ' then
-      begin
-        ProgressForm.LabelOutput.Caption := ID_OUTPUT + Trim(Copy(Line, 12, Length(Line)));
-        Continue;
-      end;
-
-      if Copy(Line, 1, 9) = 'Encoding ' then
-      begin
-        ProgressForm.LabelWorking.Caption := Format(ID_WORKING, [Global.FilesEncoded + Global.FilesWithErrors + 1, Global.FilesToEncode, Global.CurrentFile]);
-        //-- Status = 0%
-        ProgressForm.LabelStatus.Caption := ID_STATUS + '0%';
-        ProgressForm.ProgressBarStatus.Position := 0;
-        ProgressForm.LabelStatusRemaining.Caption := '?';
-        Continue;
-      end;
-
-      //-- ignore informational messages
-      lbFound := false;
-      for j := 0 to Global.EncoderInfoStrings.Count - 1 do
-        if Copy(Line, 1, Global.EncoderInfoStringsLength[j]) =
-          Global.EncoderInfoStrings[j] then
-        begin
-          lbFound := true;
-          Break;
-        end;
-      if lbFound then Continue;
-
-      //-- everything we haven't catched yet could be an error!
-      Global.ErrorOccurred := true;
-{$IFDEF DEBUG}
-      Global.Log.Add('^^^ Error Line! ^^^');
-{$ENDIF}
+      if Assigned(OnData) then OnData(Line);
     end;
   finally
     MyStringList.Free;
@@ -1245,8 +1530,8 @@ procedure TFormMain.OnEncodeTerminated(Sender: TObject);
 var
   lsFile, lsSamples, lsTime, lsCPU, lsSpeed: string;
   ldtElapsedTime, ldtEstimatedTime: TDateTime;
+  liCurrentSize: Int64;
 begin
-
   if Assigned(ProgressForm) then
   begin
     //--  if no error occurred and StatusMessages were expected
@@ -1255,7 +1540,8 @@ begin
     begin
       if MP3Settings.DeleteFileAfterProcessing then
         DeleteFile(Global.CurrentFileFullname);
-      RemoveFileFromList(Global.CurrentFileFullname);
+
+      DisplayCurrentFileStatus(ID_DONE);
       //-- add a nice summary line! (if we have one!)
       lsSamples := Trim(Copy(Global.LastLine, 8, 6));
       if StrToIntDef(lsSamples, -1) > 0 then
@@ -1280,20 +1566,30 @@ begin
       //-- we have to check if this was the last file in the batch,
       //-- because than we have to set the batch to full as well!
       Inc(Global.FilesEncoded);
-      if Global.FilesToEncode = Global.FilesEncoded then
+      if GetNumberFilesRemaining = 0 then
       begin
         ProgressForm.LabelBatch.Caption := ID_BATCH + '100%';
         ProgressForm.ProgressBarBatch.Position := 1000;
         ProgressForm.LabelBatchRemaining.Caption := LABEL_BATCHDONE;
         ProgressForm.Caption := LABEL_ENCODINGFINISHED;
+        StatusBar.Panels[0].Text := 'Ready';
       end;
+    end;
+
+    if ProgressForm.SkipRequest then
+    begin
+      ProgressForm.SkipRequest := false;
+      ProgressForm.ModalResult := mrOk;
+      DisplayCurrentFileStatus(ID_CANCELLED);
+      if Global.AutoDelete then
+        DeleteFile(Global.CurrentOutputFile);
     end;
 
     if Global.ErrorOccurred then
     begin
+      DisplayCurrentFileStatus(ID_FAILED);
       Global.ErrorOccurredInBatch := true;
       Inc(Global.FilesWithErrors);
-      MoveFileToListBottom(Global.CurrentFileFullname);
       //-- Delete 0 byte files after an error occurred
       if (Trim(MP3Settings.OutDir) <> '') and DirectoryExists(MP3Settings.OutDir) then
         lsFile := MP3Settings.OutDir
@@ -1310,10 +1606,15 @@ begin
     //-- should we stop with the last file?
     //-- or are we through with the batch?
     if Global.StopWhenDone
-      or (Global.FilesEncoded + Global.FilesWithErrors = Global.FilesToEncode) then
+      or (GetNumberFilesRemaining = 0) or Global.PreviewMode then
     begin
-      ProgressForm.ExternalClosed := true;
-      ProgressForm.ModalResult := mrOK;
+
+      if (ProgressForm.ModalResult = mrOk) then
+      begin
+        ProgressForm.ExternalClosed := true;
+        ProgressForm.Close;
+      end;
+
       Global.Log.Add('');
       if Global.FilesEncoded = 1 then
         Global.Log.Add(Format('Encoded one file in %s',
@@ -1334,24 +1635,24 @@ begin
     end;
 
     //-- Update Batch Information
-    Global.CurrentSize := Global.LastSize + Global.CurrentItemSize;
-    Global.LastSize := Global.CurrentSize;
+    Global.LastSize := Global.LastSize + Global.CurrentItemSize;
+    liCurrentSize := GetLastSize; //already changed status of current file...
 
-    Global.BatchPercent := (100 * Global.CurrentSize) div Global.TotalSize;
+    Global.BatchPercent := (100 * liCurrentSize) div GetTotalSize;
     ProgressForm.LabelBatch.Caption := ID_BATCH + IntToStr(Global.BatchPercent) + '%';
     ProgressForm.ProgressBarBatch.Position
       := Round((Global.BatchPercent * ProgressForm.ProgressBarBatch.Max) / 100.0);
 
-    if Global.CurrentSize > 0 then
+    if liCurrentSize > 0 then
     begin
       ldtElapsedTime := Now - Global.BatchStart;
-      ldtEstimatedTime := (ldtElapsedTime * Global.TotalSize) / Global.CurrentSize;
+      ldtEstimatedTime := (ldtElapsedTime * GetTotalSize) / liCurrentSize;
       ProgressForm.LabelBatchEstimated.Caption := FormatDateTime('h:nn:ss', ldtEstimatedTime);
       ProgressForm.LabelBatchRemaining.Caption := FormatDateTime('h:nn:ss', ldtEstimatedTime - ldtElapsedTime);
     end;
 
     //-- Check if there's more work to do?
-    if ListViewFiles.Items.Count > 0 then
+    if GetNumberFilesRemaining > 0 then
     begin
       Global.Log.Add('');
       PostMessage(Handle, WM_ENCODE_NEXT_FILE, 0, 0);
@@ -1409,9 +1710,7 @@ begin
 
 end;
 
-procedure TFormMain.ProcessFiles(aOperation: TProcessOperation);
-var
-  i, liModalResult: Integer;
+procedure TFormMain.SetupRedirector(aOperation: TProcessOperation);
 
   function ThreadPriorityToPriorityClass(Value: TThreadPriority): TPriorityClass;
   begin
@@ -1428,103 +1727,76 @@ begin
   //-- initialize TRedirector
   Redirector.InitialPriority := ThreadPriorityToPriorityClass(Global.ThreadPriority);
   Redirector.DefaultErrorMode := true;
-  {TODO: Translate Global.Priority to correct TPriorityClass}
+
   if aOperation = poEncode then
   begin
-    Redirector.OnData := OnEncodeData;
-    //Redirector.OnErrorData := MyOnError;
-    Redirector.OnErrorData := OnEncodeData;
+    Redirector.OnCommonData := CommonProcessData;
+
+    if Global.DefaultEncoder = Global.LameEncoder then
+      Redirector.OnData := ProcessLineLAMEEncode
+    else
+      Redirector.OnData := ProcessLineFAACEncode;
+
+    Redirector.OnErrorData := Redirector.OnData;
     Redirector.OnTerminated := OnEncodeTerminated;
     Redirector.KillOnDestroy := true;
-    //Redirector.StartSuspended := false;
   end
   else
   begin
-    Redirector.OnData := OnDecodeData;
-    //Redirector.OnErrorData := MyOnError;
-    Redirector.OnErrorData := OnDecodeData;
+    Redirector.OnCommonData := CommonProcessData;
+    Redirector.OnData := ProcessLineLAMEDecode;
+    Redirector.OnErrorData := ProcessLineLAMEDecode;
     Redirector.OnTerminated := OnDecodeTerminated;
     Redirector.KillOnDestroy := true;
-    //Redirector.StartSuspended := false;
   end;
+end;
+
+procedure TFormMain.ProcessFiles(aOperation: TProcessOperation);
+begin
+  SetupRedirector(aOperation);
 
   TrayIcon.ToolTip := TRAY_ENCODING_START;
   ProgressForm := TFormProgress.Create(Self);
-  try
-    ProgressForm.Top := Self.Top + (Self.Height - ProgressForm.Height) div 2;
-    ProgressForm.Left := Self.Left + (Self.Width - ProgressForm.Width) div 2;
-    if aOperation = poDecode then
-    begin
-      ProgressForm.Caption := ID_DEC_IN_PROGRESS;
-      ProgressForm.LabelStopWhenDone.Caption := ID_STOP_DEC;
-    end
-    else
-    begin
-      ProgressForm.Caption := ID_ENC_IN_PROGRESS;
-      ProgressForm.LabelStopWhenDone.Caption := ID_STOP_ENC;
-    end;
-    Global.ErrorOccurredInBatch := false;
-    Global.StopWhenDone := false;
-    Global.Log.Clear;
-    Global.FilesToEncode := ListViewFiles.Items.Count;
-    Global.FilesEncoded := 0;
-    Global.FilesWithErrors := 0;
-    //-- How many bytes are in the batch?
-    Global.TotalSize := 0;
-    for i := 0 to ListViewFiles.Items.Count - 1 do
-      Inc(Global.TotalSize, TFileItem(ListViewFiles.Items[i].Data).Size);
-    Global.CurrentItemSize := 0;
-    Global.LastSize := 0;
-    Global.CurrentSize := 0;
-    Global.BatchPercent := 0;
-    Global.BatchStart := Now;
-    ProcessNextFile(aOperation);
-    liModalResult := ProgressForm.ShowModal;
-    if Redirector.Running then Redirector.Terminate(0); {TODO: check if 0 is correct}
-    if Global.ErrorOccurredInBatch then
-    begin
-      //-- There has been an error!
-      if MyMessageBox(MSG_ANERROROCCURRED, 'Oops, something wasn''t as expected!',
-        MB_ICONEXCLAMATION or MB_YESNOCANCEL) = ID_YES then
-      begin
-        with TFormLog.Create(Self) do
-        try
-          begin
-            Top := Self.Top + (Self.Height - Height) div 2;
-            Left := Self.Left + (Self.Width - Width) div 2;
-            MemoLog.Lines.Assign(Global.Log);
-            ShowModal;
-              //-- Save the log
-            Global.Log.SaveToFile(ExtractFilePath(Application.Exename) + LOG_FILENAME);
-          end;
-        finally
-          Free;
-        end;
-      end;
-    end
-    else
-    begin
-      //-- we're through, and we didn't have an error,
-      //-- now save the log-file
-      Global.Log.SaveToFile(ExtractFilePath(Application.Exename) + LOG_FILENAME);
-      //-- perhaps we should shutdown windows?
-      if ProgressForm.CheckBoxShutdown.Checked and (liModalResult <> mrCancel) then
-      begin
-        with TFormShutdown.Create(Self) do
-        try
-          Top := Self.Top + (Self.Height - Height) div 2;
-          Left := Self.Left + (Self.Width - Width) div 2;
-          if ShowModal = mrOK then
-            ShutdownWindows(Global.ShutdownFlag);
-        finally
-          Free;
-        end;
-      end;
-    end;
-  finally
-    ProgressForm.Free;
-    ProgressForm := nil;
+  ProgressForm.ModalResult := mrOk; //-- signal that everything is fine...
+
+  ProgressForm.Top := Self.Top + (Self.Height - ProgressForm.Height) div 2;
+  ProgressForm.Left := Self.Left + (Self.Width - ProgressForm.Width) div 2;
+  if aOperation = poDecode then
+  begin
+    ProgressForm.Caption := ID_DEC_IN_PROGRESS;
+    ProgressForm.LabelStopWhenDone.Caption := ID_STOP_DEC;
+  end
+  else
+  begin
+    ProgressForm.Caption := ID_ENC_IN_PROGRESS;
+    ProgressForm.LabelStopWhenDone.Caption := ID_STOP_ENC;
   end;
+
+  SetupGlobals;
+
+  Global.PreviewMode := False;
+
+  if Global.ShowProgress then
+    ProgressForm.Show
+  else
+    ProgressForm.Hide;
+
+  ProcessNextFile(aOperation);
+end;
+
+procedure TFormMain.SetupGlobals;
+begin
+  Global.ErrorOccurredInBatch := false;
+  Global.StopWhenDone := false;
+  Global.Log.Clear;
+  Global.FilesEncoded := 0;
+  Global.FilesWithErrors := 0;
+    //-- How many bytes are in the batch?
+  Global.LastSize := 0;
+  Global.CurrentItemSize := 0;
+  Global.BatchPercent := 0;
+  Global.BatchStart := Now;
+  Global.ExcerptLength := 1;
 end;
 
 procedure TFormMain.ActionDecodeExecute(Sender: TObject);
@@ -1553,238 +1825,102 @@ end;
 function TFormMain.ProcessNextFile(const aOperation: TProcessOperation): Boolean;
 var
   lsCmd: string;
+  k: Integer;
 begin
   Result := false;
-  if ListViewFiles.Items.Count > 0 then
+  k := GetNextAvailableItemIndex;
+
+  if k <> -1 then
   begin
     //-- construct command line
     if aOperation = poEncode then
-      lsCmd := Global.Encoder + GetOptionString
-        + ' "' + ListViewFiles.Items[0].SubItems[0]
-        + ListViewFiles.Items[0].Caption + '" "'
+    begin
+      if Global.DefaultEncoder = Global.LameEncoder then
+        lsCmd := Global.LameEncoder + GetOptionString
+          + ' "' + ListViewFiles.Items[k].SubItems[0]
+          + ListViewFiles.Items[k].Caption + '" "'
+      else
+        lsCmd := Global.FaacEncoder + ' -b128 "' + ListViewFiles.Items[k].SubItems[0]
+          + ListViewFiles.Items[k].Caption + '" -o"';
+    end
     else
-      lsCmd := Global.Encoder + ' --decode'
-        + ' "' + ListViewFiles.Items[0].SubItems[0]
-        + ListViewFiles.Items[0].Caption + '" "';
+      lsCmd := Global.LameEncoder + ' --decode'
+        + ' "' + ListViewFiles.Items[k].SubItems[0]
+        + ListViewFiles.Items[k].Caption + '" "';
+
+
     if (Trim(MP3Settings.OutDir) <> '') and DirectoryExists(MP3Settings.OutDir) then
-      lsCmd := lsCmd + MP3Settings.OutDir
+      Global.CurrentOutputFile := MP3Settings.OutDir
     else
-      lsCmd := lsCmd + ListViewFiles.Items[0].SubItems[0];
+      Global.CurrentOutputFile := ListViewFiles.Items[k].SubItems[0];
     if aOperation = poEncode then
-      lsCmd := lsCmd + ChangeFileExt(ListViewFiles.Items[0].Caption, '.mp3') + '"'
+    begin
+      if Global.DefaultEncoder = Global.FAACEncoder then
+        Global.CurrentOutputFile := Copy(Global.CurrentOutputFile, 1, Length(Global.CurrentOutputFile) - 1)
+      else
+        Global.CurrentOutputFile := Global.CurrentOutputFile + ChangeFileExt(ListViewFiles.Items[k].Caption, '.mp3')
+    end
     else
-      lsCmd := lsCmd + ChangeFileExt(ListViewFiles.Items[0].Caption, '.wav') + '"';
-    Redirector.CommandLine := lsCmd;
-    Global.StatusMessages := false;
-    Global.VBRHistogram := false;
-    Global.HistoMessages := false;
-    Global.BRHistogram.Clear;
-    Global.ErrorOccurred := false;
-    Global.Log.Add('Command: ' + lsCmd);
-    Global.FileStart := Now;
-    Global.FilePercent := 0;
-    Global.LastStatusUpdate := 0;
-    Redirector.Execute;
-    Global.CurrentFileFullname := ListViewFiles.Items[0].SubItems[0] + ListViewFiles.Items[0].Caption;
-    Global.CurrentFile := ListViewFiles.Items[0].Caption;
-    Global.CurrentItemSize := TFileItem(ListViewFiles.Items[0].Data).Size;
+    begin //decode
+
+      Global.CurrentItemFrames := GetNumberFramesVBR(ListViewFiles.Items[k].SubItems[0]
+        + ListViewFiles.Items[k].Caption);
+      Global.CurrentOutputFile := Global.CurrentOutputFile + ChangeFileExt(ListViewFiles.Items[k].Caption, '.wav');
+    end;
+    lsCmd := lsCmd + Global.CurrentOutputFile + '"';
+
+    if (aOperation = poEncode) and (Global.DefaultEncoder = Global.FAACEncoder) then
+      Global.CurrentOutputFile := Global.CurrentOutputFile + '\' + ChangeFileExt(ListViewFiles.Items[k].Caption, '.aac');
+
+    Result := ProcessFileByInfo(lsCmd,
+      ListViewFiles.Items[k].Caption,
+      ListViewFiles.Items[k].SubItems[0],
+      TFileItem(ListViewFiles.Items[k].Data).Size);
 
     //THREAD_PRIORITY_BELOW_NORMAL, THREAD_PRIORITY_LOWEST, THREAD_PRIORITY_IDLE
 {    if not SetThreadPriority(Redirector.ThreadID, THREAD_PRIORITY_IDLE)
       then GetSystemErrorMessage(GetLastError);}
-
-    Result := true;
   end;
 end;
+
+function TFormMain.ProcessFileByInfo(const lsCmd, lsFilename, lsFileFolder: string; const Size: Int64): Boolean;
+begin
+  //-- reset some global file specific stuff
+  with Global do
+  begin
+    StatusMessages := false;
+    VBRHistogram := false;
+    HistoMessages := false;
+    BRHistogram.Clear;
+    ErrorOccurred := false;
+    Log.Add('Command: ' + lsCmd);
+    FileStart := Now;
+    FilePercent := 0;
+    LastStatusUpdate := 0;
+  end;
+
+  Redirector.CommandLine := lsCmd;
+  Redirector.Execute;
+
+  Global.CurrentFileFullname := lsFileFolder + lsFilename;
+  Global.CurrentFile := lsFilename;
+  Global.CurrentItemSize := Size;
+
+  DisplayCurrentFileStatus(ID_CONNECTING);
+
+  Result := true;
+end;
+
 
 procedure TFormMain.WmDecodeNextFile(var Message: TMessage);
 begin
   ProcessNextFile(poDecode);
 end;
 
-procedure TFormMain.OnDecodeData(Sender: TRedirector; Buffer: Pointer;
-  Size: Integer);
-var
-  i, j, liPos1, liPos2, liFrameNo, liFrameTotal, liPercent: Integer;
-  lbFound: Boolean;
-  lsPercent, lsFrameNo, lsFrameTotal: string;
-  lpcLine: PChar;
-  lsBuffer, Line: string;
-  MyStringList: TStringList;
-  ldtDiff, ldtElapsedTime, ldtEstimatedTime: TDateTime;
-begin
-  {todo: nur jede Sekunde! Wenn im Tray, dann nur alle 10 Sekunden!!}
-  ldtDiff := Now - Global.LastStatusUpdate;
-  if Global.StatusMessages and (ldtDiff < (1 / (24 * 60 * 60))) then
-  begin
-{$IFDEF DETAIL_DEBUG}
-    Global.Log.Add('Exiting at Time Threshold 1');
-{$ENDIF}
-    exit;
-  end;
-
-  if Global.StatusMessages and TrayIcon.Active and (ldtDiff < 10 / (24 * 60 * 60)) then
-    exit;
-  Global.LastStatusUpdate := Now;
-
-  lpcLine := StrAlloc(Size + 1);
-  try
-    StrLCopy(lpcLine, Buffer, Size);
-    lpcLine[Size] := #0;
-    lsBuffer := string(lpcLine);
-  finally
-    StrDispose(lpcLine);
-  end;
-
-  MyStringList := TStringList.Create;
-  try
-    MyStringList.Text := lsBuffer;
-
-    for i := 0 to MyStringList.Count - 1 do
-    begin
-      Line := MyStringList.Strings[i];
-
-      //Global.Log.Add(Line);
-
-      //-- ignore blank lines
-      if Trim(Line) = '' then Continue;
-
-      //-- if no ProgressForm exists, simply log everthing
-      if not Assigned(ProgressForm) then
-      begin
-        Global.Log.Add(Line);
-        Continue;
-      end;
-
-      //-- if StatusMessages is set, we should get only status messages
-      if Global.StatusMessages then
-      begin
-        //--          1         2         3         4         5         6         7
-        //-- 123456789012345678901234567890123456789012345678901234567890123456789012345
-        //-- Frame# 5 [ 3674]  128kbs
-        //-- Frame#     1/9292     1 kbps (starting with 3.86 beta!)
-        ldtElapsedTime := Now - Global.BatchStart;
-        ProgressForm.LabelBatchElapsed.Caption := FormatDateTime('h:nn:ss', ldtElapsedTime);
-
-        //-- Calculate File Percent
-        //-- check what version!
-        liPos1 := Pos('[', Line);
-        if liPos1 > 0 then
-        begin //-- pre 3.86
-          liPos2 := Pos(']', Line);
-          lsFrameNo := Trim(Copy(Line, 7, liPos1 - 7));
-          lsFrameTotal := Trim(Copy(Line, liPos1 + 1, liPos2 - liPos1 - 1));
-        end
-        else
-        begin //-- post 3.86
-          liPos1 := Pos('/', Line);
-          lsFrameNo := Trim(Copy(Line, 7, liPos1 - 7));
-          lsFrameTotal := Trim(Copy(Line, liPos1 + 1, 7));
-        end;
-
-        liFrameNo := StrToIntDef(lsFrameNo, 0);
-        liFrameTotal := StrToIntDef(lsFrameTotal, 0);
-
-        if liFrameTotal > 0 then
-        begin
-          liPercent := liFrameNo * 100 div liFrameTotal;
-          if (liPercent > 0) and (liPercent <= 100) then
-          begin
-            ProgressForm.LabelStatusRemaining.Caption := FormatDateTime('h:nn:ss',
-              (Now - Global.FileStart) - ((Now - Global.FileStart) * Global.CurrentItemSize) / (Global.CurrentItemSize * liPercent div 100));
-            Global.FilePercent := liPercent
-          end;
-        end;
-        {We do get some corrupted lines now and then; I believe this
-        comes from the buffer "wrapping" over to the next portion to
-        be read. Could probably be handled by checking for a proper
-        CR/LF at the end of each buffer, the rest shoudl be prepended
-        to the next buffer. Not sure if I bother enough to really do this...}
-        {
-        else
-        begin
-          Global.ErrorOccurred := true;
-          Global.Log.Add(Line);
-        end;}
-
-        lsPercent := IntToStr(Global.FilePercent);
-        ProgressForm.LabelStatus.Caption := ID_STATUS + lsPercent + '%';
-        ProgressForm.ProgressBarStatus.Position
-          := Round((Global.FilePercent * ProgressForm.ProgressBarStatus.Max) / 100.0);
-
-        //-- Calculate Batch Percent
-        Global.CurrentSize := Global.LastSize + ((Global.CurrentItemSize * Global.FilePercent) div 100);
-        Global.BatchPercent := (100 * Global.CurrentSize) div Global.TotalSize;
-        ProgressForm.LabelBatch.Caption := ID_BATCH + IntToStr(Global.BatchPercent) + '%';
-        ProgressForm.ProgressBarBatch.Position
-          := Round((Global.BatchPercent * ProgressForm.ProgressBarBatch.Max) / 100.0);
-        if Global.CurrentSize > 0 then
-        begin
-          ldtEstimatedTime := (ldtElapsedTime * Global.TotalSize) / Global.CurrentSize;
-          ProgressForm.LabelBatchEstimated.Caption := FormatDateTime('h:nn:ss', ldtEstimatedTime);
-          ProgressForm.LabelBatchRemaining.Caption := FormatDateTime('h:nn:ss', ldtEstimatedTime - ldtElapsedTime);
-        end;
-
-         //-- todo: multi-line hint?
-        with Global do
-          TrayIcon.ToolTip := Format(TRAY_HINT, [CurrentFile, FilePercent, BatchPercent]);
-
-        //-- save the line for summary!
-        Global.LastLine := Line;
-
-        //-- and done!
-        Continue;
-      end;
-
-      //-- if we encounter the first 'Frame#' line only status messages follow
-      if Copy(Line, 1, 7) = 'Frame# ' then
-      begin
-        Global.StatusMessages := true;
-        Continue;
-      end;
-
-      //-- write log file. (Sits here as we don't want to add status-lines!
-      Global.Log.Add(Line);
-
-      //-- Check for output format
-      if Copy(Line, 1, 8) = 'output: ' then
-      begin
-        ProgressForm.LabelOutput.Caption := ID_OUTPUT + '.WAV';
-        Continue;
-      end;
-
-      if Copy(Line, 1, 7) = 'input: ' then
-      begin
-        ProgressForm.LabelWorking.Caption := Format(ID_WORKING, [Global.FilesEncoded + Global.FilesWithErrors + 1, Global.FilesToEncode, Global.CurrentFile]);
-        //-- Status = 0%
-        ProgressForm.LabelStatus.Caption := ID_STATUS + '0%';
-        ProgressForm.ProgressBarStatus.Position := 0;
-        ProgressForm.LabelStatusRemaining.Caption := '?';
-        Continue;
-      end;
-
-      //-- ignore informational messages
-      lbFound := false;
-      for j := 0 to Global.DecodeInfoStrings.Count - 1 do
-        if Copy(Line, 1, Global.DecodeInfoStringsLength[j]) =
-          Global.DecodeInfoStrings[j] then
-        begin
-          lbFound := true;
-          Break;
-        end;
-      if lbFound then Continue;
-
-      //-- everything we haven't catched yet could be an error!
-      Global.ErrorOccurred := true;
-    end;
-  finally
-    MyStringList.Free;
-  end;
-end;
-
 procedure TFormMain.OnDecodeTerminated(Sender: TObject);
 var
   lsFile: string;
+  liCurrentSize: Int64;
 begin
 
   if Assigned(ProgressForm) then
@@ -1795,24 +1931,35 @@ begin
     begin
       if MP3Settings.DeleteFileAfterProcessing then
         DeleteFile(Global.CurrentFileFullname);
-      RemoveFileFromList(Global.CurrentFileFullname);
+
+      DisplayCurrentFileStatus(ID_DONE);
       //-- we have to check if this was the last file in the batch,
       //-- because than we have to set the batch to full as well!
       Inc(Global.FilesEncoded);
-      if Global.FilesToEncode = Global.FilesEncoded then
+      if GetNumberFilesRemaining = 0 then
       begin
         ProgressForm.LabelBatch.Caption := ID_BATCH + '100%';
         ProgressForm.ProgressBarBatch.Position := 1000;
         ProgressForm.LabelBatchRemaining.Caption := LABEL_BATCHDONE;
         ProgressForm.Caption := LABEL_ENCODINGFINISHED;
+        StatusBar.Panels[0].Text := 'Ready';
       end;
+    end;
+
+    if ProgressForm.SkipRequest then
+    begin
+      ProgressForm.SkipRequest := false;
+      ProgressForm.ModalResult := mrOk;
+      DisplayCurrentFileStatus(ID_CANCELLED);
+      if Global.AutoDelete then
+        DeleteFile(Global.CurrentOutputFile);
     end;
 
     if Global.ErrorOccurred then
     begin
+      DisplayCurrentFileStatus(ID_FAILED);
       Global.ErrorOccurredInBatch := true;
       Inc(Global.FilesWithErrors);
-      MoveFileToListBottom(Global.CurrentFileFullname);
       //-- Delete 0 byte files after an error occurred
       if (Trim(MP3Settings.OutDir) <> '') and DirectoryExists(MP3Settings.OutDir) then
         lsFile := MP3Settings.OutDir
@@ -1829,10 +1976,15 @@ begin
     //-- should we stop with the last file?
     //-- or are we through with the batch?
     if Global.StopWhenDone
-      or (Global.FilesEncoded + Global.FilesWithErrors = Global.FilesToEncode) then
+      or (GetNumberFilesRemaining = 0) then
     begin
-      ProgressForm.ExternalClosed := true;
-      ProgressForm.ModalResult := mrOK;
+
+      if ProgressForm.ModalResult = mrOk then
+      begin
+        ProgressForm.ExternalClosed := true;
+        ProgressForm.Close;
+      end;
+
       Global.Log.Add('');
       if Global.FilesEncoded = 1 then
         Global.Log.Add(Format('Decoded one file in %s',
@@ -1853,20 +2005,20 @@ begin
     end;
 
     //-- Update Batch Information
-    Global.CurrentSize := Global.LastSize + Global.CurrentItemSize;
-    Global.LastSize := Global.CurrentSize;
+    Global.LastSize := Global.LastSize + Global.CurrentItemSize;
+    liCurrentSize := GetLastSize;
 
-    Global.BatchPercent := (100 * Global.CurrentSize) div Global.TotalSize;
+    Global.BatchPercent := (100 * liCurrentSize) div GetTotalSize;
     ProgressForm.LabelBatch.Caption := ID_BATCH + IntToStr(Global.BatchPercent) + '%';
     ProgressForm.ProgressBarBatch.Position
       := Round((Global.BatchPercent * ProgressForm.ProgressBarBatch.Max) / 100.0);
 
-    if Global.CurrentSize > 0 then
+    if liCurrentSize > 0 then
       ProgressForm.LabelBatchRemaining.Caption := FormatDateTime('h:nn:ss',
-        (Now - Global.BatchStart) - ((Now - Global.BatchStart) * Global.TotalSize) / Global.CurrentSize);
+        (Now - Global.BatchStart) - ((Now - Global.BatchStart) * GetTotalSize) / liCurrentSize);
 
     //-- Check if there's more work to do?
-    if ListViewFiles.Items.Count > 0 then
+    if GetNumberFilesRemaining > 0 then
     begin
       Global.Log.Add('');
       PostMessage(Handle, WM_DECODE_NEXT_FILE, 0, 0);
@@ -1891,6 +2043,8 @@ begin
   Result := false; //-- assume worst-case
   for i := 0 to ListViewFiles.Items.Count - 1 do
   begin
+    if ListViewFiles.Items[i].Subitems[6] <> ID_WAITING then COntinue;
+
     if (Trim(MP3Settings.OutDir) <> '') and DirectoryExists(MP3Settings.OutDir) then
       lsFile := MP3Settings.OutDir
     else
@@ -1942,6 +2096,12 @@ begin
   //-- if we have a command line, process it!
   if ParamCount > 0 then
     PassToOtherInstance(handle);
+
+  if Global.ShowProgress then
+    ToolButtonShowProgress.Down := true;
+
+  StatusBar.Panels[0].Text := 'Ready';
+  StatusBar.Panels[2].Text := 'LAME Options: ' + GetOptionString;
 end;
 
 procedure TFormMain.ActionLameOptionsExecute(Sender: TObject);
@@ -1959,7 +2119,122 @@ begin
   finally
     Free;
   end;
+
+  StatusBar.Panels[2].Text := 'LAME Options: ' + GetOptionString;
 end;
+
+
+//called when Progress dialog closes.
+//lbNoCancel is false precisley when the user
+//pressed the cancel button.
+
+procedure TFormMain.WmProgressClosing(var Message: TMessage);
+var
+  lbNoCancel: boolean;
+  i: Integer;
+begin
+  if Global.PreviewMode then
+    FinishPreview;
+
+  lbNoCancel := (Message.WParam = 1);
+
+  if not lbNoCancel then DisplayCurrentFileStatus(ID_WAITING);
+
+  StatusBar.Panels[0].Text := 'Ready';
+  StatusBar.Update;
+
+  try
+    if Redirector.Running then Redirector.Terminate(0);
+
+    if Global.ErrorOccurredInBatch then
+    begin
+      //-- There has been an error!
+      if MyMessageBox(MSG_ANERROROCCURRED, 'Oops, something wasn''t as expected!',
+        MB_ICONEXCLAMATION or MB_YESNOCANCEL) = ID_YES then
+      begin
+        with TFormLog.Create(Self) do
+        try
+          begin
+            Top := Self.Top + (Self.Height - Height) div 2;
+            Left := Self.Left + (Self.Width - Width) div 2;
+            MemoLog.Lines.Assign(Global.Log);
+            ShowModal;
+              //-- Save the log
+            Global.Log.SaveToFile(ExtractFilePath(Application.Exename) + LOG_FILENAME);
+          end;
+        finally
+          Free;
+        end;
+      end;
+    end
+    else
+    begin
+      //-- we're through, and we didn't have an error,
+      //-- now save the log-file
+      Global.Log.SaveToFile(ExtractFilePath(Application.Exename) + LOG_FILENAME);
+      //-- perhaps we should shutdown windows?
+      if ProgressForm.CheckBoxShutdown.Checked and lbNoCancel then
+      begin
+        with TFormShutdown.Create(Self) do
+        try
+          Top := Self.Top + (Self.Height - Height) div 2;
+          Left := Self.Left + (Self.Width - Width) div 2;
+          if ShowModal = mrOK then
+            ShutdownWindows(Global.ShutdownFlag);
+        finally
+          Free;
+        end;
+      end;
+    end;
+
+    if not lbNoCancel then
+    begin
+ //      if Redirector.Running then
+ //      Application.MessageBox(PChar('running'),'Error',MB_OK);
+      for i := 0 to ListViewFiles.Items.Count - 1 do
+      begin
+        if (GetItemStatus(ListViewFiles.Items[i]) = ID_WAITING)
+          or (Pos('%', GetItemStatus(ListViewFiles.Items[i])) <> 0) then
+          ListViewFiles.Items[i].Subitems[6] := ID_CANCELLED;
+      end;
+      if Global.AutoDelete then
+        DeleteFile(Global.CurrentOutputFile);
+    end;
+
+  finally
+    ProgressForm.Free;
+    ProgressForm := nil;
+  end;
+
+  SaveFileList;
+end;
+
+
+procedure TFormMain.DisplayCurrentFileStatus(const asMsg: string);
+var
+  lsCaption, lsPath, lsFile: string;
+  MyItem: TListItem;
+begin
+  lsFile := Global.CurrentFileFullName;
+  lsCaption := ExtractFilename(lsFile);
+  lsPath := ExtractFilePath(lsFile);
+
+  //-- search for this file
+  MyItem := ListViewFiles.FindCaption(0, lsCaption, false, true, false);
+  while Assigned(MyItem) do
+  begin
+    if MyItem.SubItems[0] = lsPath then
+    begin
+      Break; //-- File found!
+    end;
+    //-- continue with the search!
+    MyItem := ListViewFiles.FindCaption(MyItem.Index, lsCaption, false, false, false);
+  end;
+
+  if Assigned(MyItem) then
+    MyItem.SubItems[6] := asMsg;
+end;
+
 
 procedure TFormMain.WmPassedFromInstance(var Message: TMessage);
 var
@@ -1968,20 +2243,13 @@ var
   at: atom;
   Buffer: array[1..1024] of char;
 begin
-  if Assigned(ProgressForm) then
-  begin
-    //-- App is busy, don't do anything!
-    Message.Result := -1;
-    exit;
-  end;
-
   Application.Restore;
   Application.BringToFront;
 
   at := atom(Message.LParam);
 
   liLength := GlobalGetAtomName(at, @Buffer, 1024);
-  lsCmdline := Buffer;
+  lsCmdLine := Buffer;
   SetLength(lsCmdline, liLength);
   GlobalDeleteAtom(at);
 
@@ -1992,7 +2260,7 @@ begin
       if DirectoryExists(lsCmdline) then
         AddFolderToList(lsCmdline)
       else
-        AddFileToList(Buffer, false);
+        AddFileToList(lsCmdLine, false);
     finally
       ListViewFiles.Items.EndUpdate;
     end;
@@ -2002,6 +2270,183 @@ begin
     PopCursor;
   end;
   Message.Result := 0;
+end;
+
+procedure TFormMain.SuspendLame(suspend: boolean);
+begin
+  Redirector.Suspend(suspend);
+end;
+
+function TFormMain.GetNextAvailableItemIndex: Integer;
+var
+  i: Integer;
+begin
+  //-- return value if _nothing_ is waiting....
+  Result := -1;
+  for i := 0 to ListViewFiles.Items.Count - 1 do
+  begin
+    if GetItemStatus(ListViewFiles.Items[i]) = ID_WAITING then
+    begin
+      Result := I;
+      exit;
+    end;
+  end;
+end;
+
+
+function TFormMain.GetNumberFilesRemaining: integer;
+var
+  i: Integer;
+begin
+  Result := 0;
+  for i := 0 to ListViewFiles.Items.Count - 1 do
+    if GetItemStatus(ListViewFiles.Items[I]) = ID_WAITING then
+      Inc(Result);
+end;
+
+function TFormMain.GetRemainingSize: Int64;
+var
+  Item: TListItem;
+  i: Integer;
+begin
+  Result := 0;
+  for i := 0 to ListViewFiles.Items.Count - 1 do
+  begin
+    Item := ListViewFiles.Items[i];
+    if GetItemStatus(Item) = ID_WAITING then
+      Inc(Result, GetFileSize(Item.Subitems[0] + Item.Caption)); //-- todo: get file size from TFileItem
+  end;
+end;
+
+//use this: just in case we change the column ordering...
+
+function TFormMain.GetItemStatus(const item: TListItem): string;
+begin
+  Result := item.SubItems[6];
+end;
+
+function TFormMain.GetTotalSize: Integer;
+begin
+  Result := Global.LastSize + Global.CurrentItemSize + GetRemainingSize;
+end;
+
+function TFormMain.GetLastSize: Integer;
+begin
+  Result := Global.LastSize;
+end;
+
+procedure TFormMain.ToolButtonShowProgressClick(Sender: TObject);
+begin
+  Global.ShowProgress := ToolButtonShowProgress.Down;
+
+  if Assigned(ProgressForm) then
+    ProgressForm.Visible := Global.ShowProgress;
+end;
+
+procedure TFormMain.FinishPreview;
+begin
+  StatusBar.Panels[0].Text := 'Ready';
+
+  ShellExecute(GetActiveWindow, 'open', PChar(Global.CurrentOutputFile), nil, nil, SW_SHOW);
+  if Application.MessageBox('Click ''Yes'' to delete the temporary files (after you''ve finished listening)...'#13#10 +
+    '                           or ''No'' to leave the files alone.',
+    'Delete temp files?', MB_YESNO) = IDYES then
+  begin
+    if not DeleteFile(Global.CurrentFileFullName) or
+      not DeleteFile(ChangeFileExt(Global.CurrentFileFullName, '.mp3')) then
+      Application.MessageBox('Sorry - the temporary files couldn''t be deleted.'#13#10 +
+        'One was probably in use, or already deleted...', 'Problem', MB_OK);
+  end;
+  Global.PreviewMode := false;
+end;
+
+procedure TFormMain.ActionPreviewExecute(Sender: TObject);
+var
+  wav: TWAVFile;
+  lsExcerptPath, lsOrigPath, lsCmd: string;
+  Item: TListItem;
+  lfStart, lfStop: real;
+begin
+   //-- No Encoder, no encode!
+  if not EncoderFound then Exit;
+
+  lfStart := 0;
+  lfStop := 0;
+
+  if ListViewFiles.SelCount = 0 then
+  begin
+    Application.MessageBox('Please select a file to preview...', 'Message', MB_OK);
+    Exit;
+  end;
+
+  Item := ListViewFiles.Selected;
+
+  Global.PreviewMode := true;
+
+  lsExcerptPath := Item.SubItems[0] + 'RLTemp_' + Item.Caption;
+  lsOrigPath := Item.SubItems[0] + Item.Caption;
+
+  wav := TWavFile.Create(lsOrigPath);
+  try
+    case Global.ExcerptPosition of
+      0:
+        begin
+          lfStart := 0;
+          lfStop := Global.ExcerptLength;
+        end;
+      1:
+        begin
+          lfStart := wav.Duration / 2 - Global.ExcerptLength / 2;
+          lfStop := wav.Duration / 2 + Global.ExcerptLength / 2;
+        end;
+      2:
+        begin
+          lfStart := wav.Duration - Global.ExcerptLength;
+          lfStop := wav.Duration;
+        end;
+    end;
+    wav.SaveExcerpt(lsExcerptPath, lfStart, lfStop);
+  finally
+    wav.free;
+  end;
+
+  SetupGlobals;
+  SetupRedirector(poEncode);
+  ProgressForm := TFormProgress.Create(Self);
+  ProgressForm.ModalResult := mrOk;
+
+  if Global.DefaultEncoder = Global.LameEncoder then
+    lsCmd := Global.LameEncoder + GetOptionString
+      + ' "' + lsExcerptPath + '" "' + ChangeFileExt(lsExcerptPath, '.mp3') + '"'
+  else
+    lsCmd := Global.FaacEncoder + GetOptionString
+      + ' "' + lsExcerptPath + '" -o"' + ChangeFileExt(lsExcerptPath, '.mp3') + '"';
+
+  Global.CurrentOutputFile := ChangeFileExt(lsExcerptPath, '.mp3');
+
+  ProcessFileByInfo(lsCmd, ExtractFilename(lsExcerptPath), ExtractFileDir(lsExcerptPath) + '\', GetFileSize(lsExcerptPath));
+end;
+
+procedure TFormMain.ActionEncodeLameExecute(Sender: TObject);
+begin
+  Global.DefaultEncoder := Global.LameEncoder;
+  ActionEncodeExecute(Self);
+end;
+
+procedure TFormMain.ActionEncodeFaacExecute(Sender: TObject);
+begin
+  Global.DefaultEncoder := Global.FaacEncoder;
+  ActionEncodeExecute(Self);
+end;
+
+procedure TFormMain.ActionSelectAllExecute(Sender: TObject);
+var
+  i: Integer;
+begin
+  for i := 0 to ListViewFiles.Items.Count - 1 do
+    ListViewFiles.Items[i].Selected := true;
+
+  ListViewFiles.Items[ListViewFiles.Items.Count - 1].Focused := true;
 end;
 
 end.

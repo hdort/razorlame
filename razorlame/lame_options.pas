@@ -75,7 +75,6 @@ type
     CheckBoxNoShort: TCheckBox;
     CheckBoxISO: TCheckBox;
     CheckBoxVBRStrictMin: TCheckBox;
-    EditCustomOptions: TEdit;
     LabelCustomOptions: TLabel;
     CheckBoxOnlyCustomOptions: TCheckBox;
     GroupBoxFiling: TGroupBox;
@@ -97,6 +96,7 @@ type
     ButtonLoadOptions: TButton;
     OpenDialogLameOptions: TOpenDialog;
     SaveDialogLameOptions: TSaveDialog;
+    ComboBoxCustomOptions: TComboBox;
     procedure TrackBarBitrateChange(Sender: TObject);
     procedure TrackBarVbrMaxBitrateChange(Sender: TObject);
     procedure CheckBoxVBRClick(Sender: TObject);
@@ -117,6 +117,8 @@ type
     { Private declarations }
     FOldOnIdle: TIdleEvent;
     procedure MyOnIdle(Sender: TObject; var Done: Boolean);
+    procedure UpdateMRU;
+    procedure FillComboFromMRU;
   public
     { Public declarations }
     //-- SetOptions sets up the dialog according to Globals
@@ -132,6 +134,35 @@ implementation
 uses Globals, ResStr, UtilFuncs;
 
 {$R *.DFM}
+
+procedure TFormLameOptions.FillComboFromMRU;
+begin
+  ComboBoxCustomOptions.Items.AddStrings(MP3Settings.CustomMRU)
+end;
+
+procedure TFormLameOptions.UpdateMRU;
+var
+  i, liCount: Integer;
+begin
+  liCount := 0;
+  with MP3Settings do
+  begin
+    CustomMRU.Clear;
+
+    if ComboBoxCustomOptions.Items.IndexOf(ComboBoxCustomOptions.Text) = -1 then
+    begin
+      CustomMRU.Add(ComboBoxCustomOptions.Text);
+      liCount := 1;
+    end;
+
+    for i := 0 to ComboBoxCustomOptions.Items.Count - 1 do
+    begin
+      CustomMRU.Add(ComboBoxCustomOptions.Items[i]);
+      Inc(liCount);
+      if liCount > 4 then exit;
+    end;
+  end;
+end;
 
 procedure TFormLameOptions.SetOptions;
 var
@@ -200,9 +231,10 @@ begin
     CheckBoxNoRes.Checked := NoRes;
     CheckBoxNoShort.Checked := NoShort;
     CheckBoxISO.Checked := ISO;
-    EditCustomOptions.Text := CustomOptions;
+    ComboBoxCustomOptions.Text := CustomOptions;
     CheckBoxOnlyCustomOptions.Checked := OnlyCustomOptions;
     ComboBoxqLevel.ItemIndex := qLevel + 1;
+    FillComboFromMRU;
 
     //-- Audio Processing
     ComboBoxResample.ItemIndex := Ord(ResampleFreq);
@@ -216,7 +248,6 @@ begin
     EditLowpassFreq.Text := FloatToStr(LowpassFreq);
     CheckBoxLowpassWidth.Checked := LowWidthEnabled;
     EditLowpassWidth.Text := FloatToStr(LowpassWidth);
-
   end;
 end;
 
@@ -274,9 +305,10 @@ begin
     NoRes := CheckBoxNoRes.Checked;
     NoShort := CheckBoxNoShort.Checked;
     ISO := CheckBoxISO.Checked;
-    CustomOptions := EditCustomOptions.Text;
+    CustomOptions := ComboBoxCustomOptions.Text;
     OnlyCustomOptions := CheckBoxOnlyCustomOptions.Checked;
     qLevel := ComboBoxqLevel.ItemIndex - 1;
+    UpdateMRU;
 
     //-- Audio Processing
     ResampleFreq := TResampleFreq(ComboBoxResample.ItemIndex);
