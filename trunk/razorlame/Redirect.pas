@@ -8,12 +8,13 @@ unit Redirect;
 
   18. March 2000: added some comments, checked pipes a last time
                   after process finishes to "clean up" properly.
-
-  25. June 2000: InitialPriority was never really used!
-  February 2001: added TRedirector.Suspend
-                 TRedirector.Terminate now waits 1s for thread to end before exit
-                 introduced CommonDataEvent
-                 (all changes by Jonathan Dee <dee@caltech.edu>)
+                  (Holger Dors)
+  25. June 2000:  InitialPriority was never really used! (Holger Dors)
+  February 2001:  added TRedirector.Suspend
+                  TRedirector.Terminate now waits 1s for thread to end before exit
+                  introduced CommonDataEvent
+                  (all changes by Jonathan Dee <dee@caltech.edu>)
+  03. March 2001: Added "LastData" property (Holger Dors)
 }
 
 interface
@@ -59,6 +60,7 @@ type
     FOnErrorData: TDataEvent;
     FOnTerminated: TNotifyEvent;
     FShowWindow: Integer;
+    FLastData: Boolean;
     procedure Error(msg: string);
     procedure WinError(msg: string);
     procedure CreatePipes;
@@ -92,6 +94,7 @@ type
     property ProcessID: Integer read GetProcessID;
     property ThreadID: Integer read GetThreadID;
     property Environment: Pointer read FEnvironment write SetEnvironment;
+    property LastData: boolean read FLastData;
   published
     property KillOnDestroy: Boolean read FKillOnDestroy write FKillOnDestroy;
     property Executable: string read FExecutable write SetExecutable;
@@ -404,6 +407,7 @@ var
 begin
   if Running then Error('Process is already active');
   if Trim(CommandLine) = '' then Error('No commandline to run');
+  FLastData := false;
   try
     CreatePipes;
 
@@ -516,6 +520,7 @@ begin
     if Idle and (WaitForSingleObject(FRedirector.ProcessHandle,
       100) = WAIT_OBJECT_0) then
     begin
+      FRedirector.FLastData := true;
       //-- check for StdOutout-Pipe a last time
       if PeekNamedPipe(FRedirector.FPipeOutput.hRead, nil, 0, nil,
         @FRedirector.FAvailable, nil) and (FRedirector.FAvailable > 0) then
