@@ -16,6 +16,10 @@ uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
   StdCtrls, ComCtrls, ExtCtrls, Menus;
 
+
+const
+  WM_AFTER_CREATE = WM_USER + 1;
+
 type
   TFormProgress = class(TForm)
     PanelButtons: TPanel;
@@ -55,11 +59,11 @@ type
     procedure SplitterMoved(Sender: TObject);
     procedure CheckBoxDelSourceClick(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
-    procedure FormShow(Sender: TObject);
   private
     { Private declarations }
     procedure ResetFormControls;
     procedure WMSysCommand(var Message: TMessage); message WM_SYSCOMMAND;
+    procedure WmAfterCreate(var Message: TMessage); message WM_AFTER_CREATE;
   public
     { Public declarations }
     ExternalClosed: Boolean;
@@ -77,8 +81,6 @@ uses UtilFuncs, Globals, ResStr, Main, About;
 
 procedure TFormProgress.ResetFormControls;
 begin
-  //todo: re-positoning won't work yet...
-  //todo: resizing won't work properly as well. Idea: safe state with/without histogram seperately?
   if not RepositionForm(PROG_FORM_SECTION, Self) then
     Self.Position := poOwnerFormCenter;
 
@@ -94,7 +96,6 @@ begin
   begin
     ButtonHistogram.Caption := 'Hide &histogram';
     PanelHistogram.Width := IniReadInteger(PROG_FORM_SECTION, 'PanelHistogramWidth', PanelHistogram.Width);
-    //PanelHistogram.Width := ClientWidth - PanelStatus.Constraints.MinWidth;
   end;
 
   ProgressBarStatus.Position := 0;
@@ -142,6 +143,8 @@ begin
   ProgressBarStatus.Max := 1000;
   ProgressBarBatch.Max := 1000;
   ExternalClosed := false;
+
+  PostMessage(Handle, WM_AFTER_CREATE, 0, 0);
 end;
 
 procedure TFormProgress.FormCloseQuery(Sender: TObject;
@@ -399,7 +402,7 @@ begin
   end;
 end;
 
-procedure TFormProgress.FormShow(Sender: TObject);
+procedure TFormProgress.WmAfterCreate(var Message: TMessage);
 begin
   ResetFormControls;
 end;
