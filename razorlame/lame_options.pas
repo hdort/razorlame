@@ -1,4 +1,4 @@
-(* (c) Copyright 2000, 2001 - Holger Dors
+(* (c) Copyright 2000-2003  -  Holger Dors
    =======================================
 
    This file is part of RazorLame,
@@ -117,7 +117,9 @@ type
     { Private declarations }
     FOldOnIdle: TIdleEvent;
     procedure MyOnIdle(Sender: TObject; var Done: Boolean);
-    procedure SetCustomOnly(Value: boolean);    
+    procedure SetCustomOnly(Value: boolean);
+    procedure UpdateABRView;
+    procedure UpdateVBRView;
   public
     { Public declarations }
     //-- SetOptions sets up the dialog according to Globals
@@ -314,41 +316,7 @@ end;
 
 procedure TFormLameOptions.CheckBoxVBRClick(Sender: TObject);
 begin
-  if CheckBoxVBR.Checked then
-  begin
-    GroupBoxVBRMaxBitrate.Enabled := true;
-    LabelVbrHelp.Enabled := true;
-    LabelVbrMaxBitrate.Enabled := true;
-    TrackBarVbrMaxBitrate.Enabled := true;
-    CheckBoxVBRDisableTag.Enabled := true;
-    CheckBoxVBRStrictMin.Enabled := true;
-    CheckBoxVBRUseABR.Enabled := true;
-    LabelABRTarget.Enabled := CheckBoxVBRUseABR.Checked;
-    SpinEditVBRABRTargetBitrate.Enabled := CheckBoxVBRUseABR.Checked;
-    GroupBoxVBRQuality.Enabled := not CheckBoxVBRUseABR.Checked;
-    SpinEditVBRQuality.Enabled := not CheckBoxVBRUseABR.Checked;
-    GroupBoxVBRMaxBitrate.Font.Color := clWindowText;
-    if not CheckBoxVBRUseABR.Checked then
-      GroupBoxVBRQuality.Font.Color := clWindowText
-    else
-      GroupBoxVBRQuality.Font.Color := clGrayText;
-  end
-  else
-  begin
-    GroupBoxVBRMaxBitrate.Enabled := false;
-    GroupBoxVBRMaxBitrate.Font.Color := clGrayText;
-    GroupBoxVBRQuality.Enabled := false;
-    GroupBoxVBRQuality.Font.Color := clGrayText;
-    LabelVbrHelp.Enabled := false;
-    SpinEditVBRQuality.Enabled := false;
-    LabelVbrMaxBitrate.Enabled := false;
-    TrackBarVbrMaxBitrate.Enabled := false;
-    CheckBoxVBRDisableTag.Enabled := false;
-    CheckBoxVBRStrictMin.Enabled := false;
-    CheckBoxVBRUseABR.Enabled := false;
-    LabelABRTarget.Enabled := false;
-    SpinEditVBRABRTargetBitrate.Enabled := false;
-  end;
+  UpdateVBRView;
 end;
 
 procedure TFormLameOptions.CheckBoxHighpassFreqClick(Sender: TObject);
@@ -414,14 +382,7 @@ end;
 
 procedure TFormLameOptions.CheckBoxVBRUseABRClick(Sender: TObject);
 begin
-  LabelABRTarget.Enabled := CheckBoxVBRUseABR.Checked;
-  SpinEditVBRABRTargetBitrate.Enabled := CheckBoxVBRUseABR.Checked;
-  GroupBoxVBRQuality.Enabled := not CheckBoxVBRUseABR.Checked;
-  SpinEditVBRQuality.Enabled := GroupBoxVBRQuality.Enabled;
-  if GroupBoxVBRQuality.Enabled then
-    GroupBoxVBRQuality.Font.Color := clWindowText
-  else
-    GroupBoxVBRQuality.Font.Color := clGrayText;
+  UpdateABRView;
 end;
 
 procedure TFormLameOptions.RadioButtonDirClick(Sender: TObject);
@@ -588,6 +549,60 @@ begin
     CheckBoxOnlyCustomOptions.Font.Style := CheckBoxOnlyCustomOptions.Font.Style + [fsBold]
   else
     CheckBoxOnlyCustomOptions.Font.Style := CheckBoxOnlyCustomOptions.Font.Style - [fsBold];
+
+  //if Value and CheckBoxVBR.Checked then UpdateABRView;
+  if Value then UpdateVBRView;
+end;
+
+procedure TFormLameOptions.UpdateABRView;
+begin
+  LabelABRTarget.Enabled := CheckBoxVBRUseABR.Checked;
+  SpinEditVBRABRTargetBitrate.Enabled := CheckBoxVBRUseABR.Checked;
+  GroupBoxVBRQuality.Enabled := not CheckBoxVBRUseABR.Checked;
+  SpinEditVBRQuality.Enabled := GroupBoxVBRQuality.Enabled;
+  if GroupBoxVBRQuality.Enabled then
+    GroupBoxVBRQuality.Font.Color := clWindowText
+  else
+    GroupBoxVBRQuality.Font.Color := clGrayText;
+end;
+
+procedure TFormLameOptions.UpdateVBRView;
+begin
+  if CheckBoxVBR.Checked then
+  begin
+    GroupBoxVBRMaxBitrate.Enabled := true;
+    LabelVbrHelp.Enabled := true;
+    LabelVbrMaxBitrate.Enabled := true;
+    TrackBarVbrMaxBitrate.Enabled := true;
+    CheckBoxVBRDisableTag.Enabled := true;
+    CheckBoxVBRStrictMin.Enabled := true;
+    CheckBoxVBRUseABR.Enabled := true;
+    LabelABRTarget.Enabled := CheckBoxVBRUseABR.Checked;
+    SpinEditVBRABRTargetBitrate.Enabled := CheckBoxVBRUseABR.Checked;
+    GroupBoxVBRQuality.Enabled := not CheckBoxVBRUseABR.Checked;
+    SpinEditVBRQuality.Enabled := not CheckBoxVBRUseABR.Checked;
+    GroupBoxVBRMaxBitrate.Font.Color := clWindowText;
+    if not CheckBoxVBRUseABR.Checked then
+      GroupBoxVBRQuality.Font.Color := clWindowText
+    else
+      GroupBoxVBRQuality.Font.Color := clGrayText;
+  end
+  else
+  begin
+    GroupBoxVBRMaxBitrate.Enabled := false;
+    GroupBoxVBRMaxBitrate.Font.Color := clGrayText;
+    GroupBoxVBRQuality.Enabled := false;
+    GroupBoxVBRQuality.Font.Color := clGrayText;
+    LabelVbrHelp.Enabled := false;
+    SpinEditVBRQuality.Enabled := false;
+    LabelVbrMaxBitrate.Enabled := false;
+    TrackBarVbrMaxBitrate.Enabled := false;
+    CheckBoxVBRDisableTag.Enabled := false;
+    CheckBoxVBRStrictMin.Enabled := false;
+    CheckBoxVBRUseABR.Enabled := false;
+    LabelABRTarget.Enabled := false;
+    SpinEditVBRABRTargetBitrate.Enabled := false;
+  end;
 end;
 
 end.
