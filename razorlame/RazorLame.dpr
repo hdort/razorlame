@@ -1,4 +1,4 @@
-(* (c) Copyright 2000 - Holger Dors
+(* (c) Copyright 2000-2005  -  Holger Dors
    =======================================
 
    This file is part of RazorLame,
@@ -8,7 +8,6 @@
 
 program RazorLame;
 
-{$R 'FVCSVer.res' 'FVCSVer.rc'}
 {$R 'XPThemes.res' 'XPThemes.rc'}
 
 (*
