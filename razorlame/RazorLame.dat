@@ -31,6 +31,8 @@
 14=CPU features:#20
 15=#20#20#20#20#20#20to
 16=#20Executable downloaded#20
+17=( Binaries downloaded
+18=(Win32 binaries
 
 [DecodeInfoMsgs]
 1=skipping#20

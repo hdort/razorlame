@@ -12,41 +12,38 @@ unit globals;
 
 interface
 
-uses Windows, Messages, Classes, ResStr, UtilFuncs;
+uses Windows, Classes, Graphics, ResStr, UtilFuncs;
 
 const
-  WM_ITEM_DELETED = WM_USER + 1;
-  WM_ENCODE_NEXT_FILE = WM_USER + 2;
-  WM_DECODE_NEXT_FILE = WM_USER + 3;
-  WM_AFTER_CREATE = WM_USER + 4;
-  WM_PASSED_FROM_INSTANCE = WM_USER + 5;
-  WM_PROGRESS_CLOSING = WM_USER + 6;
-
-const
-  RL_VERSION = 'RazorLame 1.2.0';
-  LOG_FILENAME = 'RazorLame.log';
+  RL_VERSION = 'RazorLame 1.1.5';
+  APP_TITLE = 'RazorLame';
 
   LAME_HOMEPAGE = 'http://www.mp3dev.org/';
   RAZORLAME_HOMEPAGE = 'http://www.dors.de/razorlame/';
-  RAZORLAME_FORUM = 'http://pub22.ezboard.com/brazorlame';
+  //RAZORLAME_FORUM = 'http://pub22.ezboard.com/brazorlame';
+  RAZORLAME_FORUM = 'http://www.dors.de/razorlame/forum';
 
   TOOLBAR_SECTION = 'Toolbar';
   LAYOUT_ITEM = 'Layout';
   VISIBLE_ITEM = 'Visible';
   FILES_SECTION = 'Files';
   FORM_SECTION = 'Form';
+  PROG_FORM_SECTION = 'ProgressForm';
 
   LAYOUT_ICONS = 1;
   LAYOUT_CAPTIONS = 2;
   LAYOUT_BOTH = 3;
+
+  DESIGN_FONT = 'MS Sans Serif';
 
 type
 
   TMp3Flag = (mfCopy, mfCopyright);
   TMp3Flags = set of TMp3Flag;
   TLameMode = (lmStereo, lmJointStereo, lmForcedJointStereo, lmMono, lmDefault);
-  TLameOptimization = (loNone, loSpeed, loQuality, loVoice);
-  TResampleFreq = (rfDefault, rf16kHz, rf22kHz, rf24kHz, rf32kHz, rf44kHz, rf48kHz);
+  TLameOptimization = (loNone, loSpeed, loQuality);
+  TResampleFreq = (rfDefault, rf16kHz, rf22kHz, rf24kHz, rf32kHz, rf44kHz, rf48kHz, rf8kHz, rf11kHz, rf12kHz);
+  //'default', '16 kHz', '22.05 kHz', '24 kHz', '32 kHz', '44.1 kHz', '48 kHz', '8 kHz', '11.025 kHz', '12 kHz'
   TATHControl = (athDefault, athOnly, athDisabled, athShort);
   TThreadPriority = (tpIdle, tpNormal, tpHigh, tpRealtime);
 
@@ -80,7 +77,6 @@ type
     NoShort: Boolean;
     ISO: Boolean;
     CustomOptions: string;
-    CustomMRU: TStringList;
     OnlyCustomOptions: Boolean;
     OutDir: string;
     DeleteFileAfterProcessing: Boolean;
@@ -89,9 +85,8 @@ type
   end;
 
   TGlobalVars = record
-    LameEncoder: string;
-    FaacEncoder: string;
-    DefaultEncoder: string;
+    Encoder: string;
+    FilesToEncode: Integer;
     FilesEncoded: Integer;
     FilesWithErrors: Integer;
     Log: TStringList;
@@ -99,16 +94,16 @@ type
     ErrorOccurredInBatch: Boolean;
     CurrentFileFullname: string;
     CurrentFile: string;
-    CurrentOutputFile: string;
     FilePercent: Integer;
     BatchPercent: Integer;
     StopWhenDone: Boolean;
     LastOpenDir: string;
     StatusMessages: Boolean;
     VBRHistogram: Boolean;
+    TotalSize: Int64;
+    CurrentSize: Int64;
     LastSize: Int64;
     CurrentItemSize: Int64;
-    CurrentItemFrames: Int64; //used when _decoding_
     BatchStart: TDateTime;
     FileStart: TDateTime;
     LastLine: string;
@@ -123,11 +118,11 @@ type
     LastStatusUpdate: TDateTime;
     ThreadPriority: TThreadPriority;
     ShutdownFlag: TShutdownFlag;
-    ShowProgress: boolean;
-    PreviewMode: boolean;
-    AutoDelete: boolean;
-    ExcerptLength: Integer;
-    ExcerptPosition: Integer;
+    Overlap: string;
+    SelectedFont: string;
+    XPMenu: boolean;
+    LRColor: TColor;
+    MSColor: TColor;
   end;
 
   TFileItem = class(TObject)
@@ -135,8 +130,6 @@ type
     Path: string;
     Size: Int64;
     Date: TDateTime;
-    Length: TDateTime;
-    Bitrate: integer;
   end;
 
 var
@@ -158,7 +151,6 @@ begin
   Global.EncoderInfoStrings := TStringList.Create;
   Global.DecodeInfoStrings := TStringList.Create;
   Global.BRHistogram := TStringList.Create;
-  MP3Settings.CustomMRU := TStringList.Create;
 end;
 
 procedure FreeGlobals;
@@ -168,7 +160,6 @@ begin
   Global.EncoderInfoStrings.Free;
   Global.DecodeInfoStrings.Free;
   Global.BRHistogram.Free;
-  MP3Settings.CustomMRU.Free;
 end;
 
 initialization

@@ -75,6 +75,7 @@ type
     CheckBoxNoShort: TCheckBox;
     CheckBoxISO: TCheckBox;
     CheckBoxVBRStrictMin: TCheckBox;
+    EditCustomOptions: TEdit;
     LabelCustomOptions: TLabel;
     CheckBoxOnlyCustomOptions: TCheckBox;
     GroupBoxFiling: TGroupBox;
@@ -90,13 +91,11 @@ type
     ComboBoxqLevel: TComboBox;
     LabelqLevel: TLabel;
     Panel2: TPanel;
-    Label1: TLabel;
+    LabelDescription: TLabel;
     EditDescription: TEdit;
     ButtonSaveOptions: TButton;
     ButtonLoadOptions: TButton;
-    OpenDialogLameOptions: TOpenDialog;
     SaveDialogLameOptions: TSaveDialog;
-    ComboBoxCustomOptions: TComboBox;
     procedure TrackBarBitrateChange(Sender: TObject);
     procedure TrackBarVbrMaxBitrateChange(Sender: TObject);
     procedure CheckBoxVBRClick(Sender: TObject);
@@ -113,12 +112,12 @@ type
     procedure FormDestroy(Sender: TObject);
     procedure ButtonSaveOptionsClick(Sender: TObject);
     procedure ButtonLoadOptionsClick(Sender: TObject);
+    procedure CheckBoxOnlyCustomOptionsClick(Sender: TObject);
   private
     { Private declarations }
     FOldOnIdle: TIdleEvent;
     procedure MyOnIdle(Sender: TObject; var Done: Boolean);
-    procedure UpdateMRU;
-    procedure FillComboFromMRU;
+    procedure SetCustomOnly(Value: boolean);    
   public
     { Public declarations }
     //-- SetOptions sets up the dialog according to Globals
@@ -135,35 +134,6 @@ uses Globals, ResStr, UtilFuncs;
 
 {$R *.DFM}
 
-procedure TFormLameOptions.FillComboFromMRU;
-begin
-  ComboBoxCustomOptions.Items.AddStrings(MP3Settings.CustomMRU)
-end;
-
-procedure TFormLameOptions.UpdateMRU;
-var
-  i, liCount: Integer;
-begin
-  liCount := 0;
-  with MP3Settings do
-  begin
-    CustomMRU.Clear;
-
-    if ComboBoxCustomOptions.Items.IndexOf(ComboBoxCustomOptions.Text) = -1 then
-    begin
-      CustomMRU.Add(ComboBoxCustomOptions.Text);
-      liCount := 1;
-    end;
-
-    for i := 0 to ComboBoxCustomOptions.Items.Count - 1 do
-    begin
-      CustomMRU.Add(ComboBoxCustomOptions.Items[i]);
-      Inc(liCount);
-      if liCount > 4 then exit;
-    end;
-  end;
-end;
-
 procedure TFormLameOptions.SetOptions;
 var
   i: Integer;
@@ -175,11 +145,11 @@ begin
     EditDescription.Text := Description;
 
     //-- Options
-    if IncludeCRC then CheckBoxCRC.Checked := true;
+    CheckBoxCRC.Checked := IncludeCRC;
 
     //-- Flags
-    if mfCopy in Flags then CheckBoxCopy.Checked := true;
-    if mfCopyright in Flags then CheckBoxCopyright.Checked := true;
+    CheckBoxCopy.Checked := (mfCopy in Flags);
+    CheckBoxCopyright.Checked := (mfCopyright in Flags);
 
     //-- Filing
     CheckBoxDeleteFileAfterProcessing.Checked := DeleteFileAfterProcessing;
@@ -214,14 +184,14 @@ begin
     CheckBoxVBRDisableTag.Checked := VBRDisableTag;
     CheckBoxVBRStrictMin.Checked := VBRStrictMin;
     CheckBoxVBRUseABR.Checked := VBRUseABR;
-    SpinEditVBRABRTargetBitrate.Enabled := CheckBoxVBRUseABR.Checked;
+    LabelABRTarget.Enabled := CheckBoxVBRUseABR.Checked and VBREnabled;
+    SpinEditVBRABRTargetBitrate.Enabled := CheckBoxVBRUseABR.Checked and VBREnabled;
     SpinEditVBRABRTargetBitrate.Value := VBRABRTargetBitrate;
 
     //-- Output Directory
     RadioButtonInputDir.Checked := UseInputDir;
     RadioButtonOutputDir.Checked := not UseInputDir;
     EditOutputDir.Text := OutDir;
-    if OutDir = '' then RadioButtonInputDir.Checked := true;
     EditOutputDir.Enabled := not RadioButtonInputDir.Checked;
     SpeedButtonOutputDir.Enabled := EditOutputDir.Enabled;
 
@@ -232,13 +202,17 @@ begin
     CheckBoxNoRes.Checked := NoRes;
     CheckBoxNoShort.Checked := NoShort;
     CheckBoxISO.Checked := ISO;
-    ComboBoxCustomOptions.Text := CustomOptions;
+    EditCustomOptions.Text := CustomOptions;
     CheckBoxOnlyCustomOptions.Checked := OnlyCustomOptions;
     ComboBoxqLevel.ItemIndex := qLevel + 1;
-    FillComboFromMRU;
+
+    //-- if CheckBoxOnlyCustomOptions is checked, make that tab first!
+    if CheckBoxOnlyCustomOptions.checked then PageControlOptions.ActivePageIndex := 3;
 
     //-- Audio Processing
-    ComboBoxResample.ItemIndex := Ord(ResampleFreq);
+    ComboBoxResample.Items.IndexOfObject(TObject(Ord(ResampleFreq)));
+    ComboBoxResample.ItemIndex := ComboBoxResample.Items.IndexOfObject(TObject(Ord(ResampleFreq)));
+    //ComboBoxResample.ItemIndex := Ord(ResampleFreq);
 
     CheckBoxHighpassFreq.Checked := HighpassEnabled;
     EditHighpassFreq.Text := FloatToStr(HighpassFreq); //FloatToStrF(HighpassFreq, ffFixed, 4,2);
@@ -306,13 +280,12 @@ begin
     NoRes := CheckBoxNoRes.Checked;
     NoShort := CheckBoxNoShort.Checked;
     ISO := CheckBoxISO.Checked;
-    CustomOptions := ComboBoxCustomOptions.Text;
+    CustomOptions := EditCustomOptions.Text;
     OnlyCustomOptions := CheckBoxOnlyCustomOptions.Checked;
     qLevel := ComboBoxqLevel.ItemIndex - 1;
-    UpdateMRU;
 
     //-- Audio Processing
-    ResampleFreq := TResampleFreq(ComboBoxResample.ItemIndex);
+    ResampleFreq := TResampleFreq(Integer(ComboBoxResample.Items.Objects[ComboBoxResample.ItemIndex]));
 
     HighpassEnabled := CheckBoxHighpassFreq.Checked;
     HighpassFreq := StrToFloatDef(EditHighpassFreq.Text, 0);
@@ -343,11 +316,7 @@ begin
   if CheckBoxVBR.Checked then
   begin
     GroupBoxVBRMaxBitrate.Enabled := true;
-    GroupBoxVBRMaxBitrate.Font.Color := clWindowText;
-    GroupBoxVBRQuality.Enabled := true;
-    GroupBoxVBRQuality.Font.Color := clWindowText;
     LabelVbrHelp.Enabled := true;
-    SpinEditVBRQuality.Enabled := true;
     LabelVbrMaxBitrate.Enabled := true;
     TrackBarVbrMaxBitrate.Enabled := true;
     CheckBoxVBRDisableTag.Enabled := true;
@@ -355,6 +324,13 @@ begin
     CheckBoxVBRUseABR.Enabled := true;
     LabelABRTarget.Enabled := CheckBoxVBRUseABR.Checked;
     SpinEditVBRABRTargetBitrate.Enabled := CheckBoxVBRUseABR.Checked;
+    GroupBoxVBRQuality.Enabled := not CheckBoxVBRUseABR.Checked;
+    SpinEditVBRQuality.Enabled := not CheckBoxVBRUseABR.Checked;
+    GroupBoxVBRMaxBitrate.Font.Color := clWindowText;
+    if not CheckBoxVBRUseABR.Checked then
+      GroupBoxVBRQuality.Font.Color := clWindowText
+    else
+      GroupBoxVBRQuality.Font.Color := clGrayText;
   end
   else
   begin
@@ -424,11 +400,15 @@ end;
 
 procedure TFormLameOptions.FormCreate(Sender: TObject);
 begin
+  //-- Set selected font
+  SetFont(Self, DESIGN_FONT, Global.SelectedFont);
+  FixDPI(self, 96);
   PageControlOptions.ActivePageIndex := 0;
   TrackBarBitrate.Max := High(gsaBitrates);
   TrackBarVbrMaxBitrate.Max := High(gsaBitrates);
   FOldOnIdle := Application.OnIdle;
   Application.OnIdle := MyOnIdle;
+  FillResampleStrings(ComboBoxResample.Items);
 end;
 
 procedure TFormLameOptions.CheckBoxVBRUseABRClick(Sender: TObject);
@@ -479,30 +459,134 @@ procedure TFormLameOptions.ButtonSaveOptionsClick(Sender: TObject);
 var
   TempSettings: TMP3Settings;
 begin
-  with SaveDialogLameOptions do
-    if Execute then
-    begin
-      //-- save current state
-      TempSettings := MP3Settings;
-      //-- determine the currently settings
-      GetOptions;
-      //-- and write those Options
-      WriteLameOptions(FileName);
-      //-- now set back the options, so user can still cancel dialog!
-      MP3Settings := TempSettings;
+  with TSaveDialog.Create(Self) do
+  begin
+    try
+      DefaultExt := 'rlo';
+      Filter := 'RazorLame Lame Options|*.rlo|All files|*.*';
+      Options := [ofOverwritePrompt, ofHideReadOnly, ofEnableSizing];
+      InitialDir := ExtractFilePath(Application.ExeName); //-- always start in EXE-Dir
+      if Execute then
+      begin
+        //-- save current state
+        TempSettings := MP3Settings;
+        //-- determine the currently settings
+        GetOptions;
+        //-- and write those Options
+        WriteLameOptions(FileName);
+        //-- now set back the options, so user can still cancel dialog!
+        MP3Settings := TempSettings;
+      end;
+    finally
+      Free;
     end;
+  end;
 end;
 
 procedure TFormLameOptions.ButtonLoadOptionsClick(Sender: TObject);
 begin
-  with OpenDialogLameOptions do
-    if Execute then
-    begin
-      //-- read those Options
-      ReadLameOptions(FileName);
-      //-- and set them in the dialog
-      SetOptions;
+  with TOpenDialog.Create(Self) do
+  begin
+    try
+      DefaultExt := 'rlo';
+      Filter := 'RazorLame Lame Options|*.rlo|All files|*.*';
+      //Options := [ofFileMustExist, ofEnableSizing];
+      Options := [ofFileMustExist, ofHideReadOnly, ofEnableSizing];
+      InitialDir := ExtractFilePath(Application.ExeName); //-- always start in EXE-Dir
+      if Execute then
+      begin
+        //-- read those Options
+        ReadLameOptions(FileName);
+        //-- and set them in the dialog
+        SetOptions;
+      end;
+    finally
+      Free;
     end;
+  end;
+end;
+
+procedure TFormLameOptions.CheckBoxOnlyCustomOptionsClick(Sender: TObject);
+begin
+  SetCustomOnly(not CheckBoxOnlyCustomOptions.Checked);
+end;
+
+procedure TFormLameOptions.SetCustomOnly(Value: boolean);
+var
+  MyColor: TColor;
+begin
+  CheckBoxCRC.Enabled := Value;
+  CheckBoxCopy.Enabled := Value;
+  CheckBoxCopyright.Enabled := Value;
+  CheckBoxDifferentBlockTypes.Enabled := Value;
+  CheckBoxDisableFiltering.Enabled := Value;
+  CheckBoxHighpassFreq.Enabled := Value;
+  CheckBoxHighpassWidth.Enabled := Value;
+  CheckBoxISO.Enabled := Value;
+  CheckBoxLowpassFreq.Enabled := Value;
+  CheckBoxLowpassWidth.Enabled := Value;
+  CheckBoxNoRes.Enabled := Value;
+  CheckBoxNoShort.Enabled := Value;
+  CheckBoxVBR.Enabled := Value;
+  CheckBoxVBRDisableTag.Enabled := Value;
+  CheckBoxVBRStrictMin.Enabled := Value;
+  CheckBoxVBRUseABR.Enabled := Value;
+  ComboBoxATH.Enabled := Value;
+  ComboBoxMode.Enabled := Value;
+  ComboBoxOptimization.Enabled := Value;
+  ComboBoxResample.Enabled := Value;
+  ComboBoxqLevel.Enabled := Value;
+  EditHighpassFreq.Enabled := Value;
+  EditHighpassWidth.Enabled := Value;
+  EditLowpassFreq.Enabled := Value;
+  EditLowpassWidth.Enabled := Value;
+  GroupBoxBitrate.Enabled := Value;
+  GroupBoxFlags.Enabled := Value;
+  GroupBoxHighpass.Enabled := Value;
+  GroupBoxLowpass.Enabled := Value;
+  GroupBoxMode.Enabled := Value;
+  GroupBoxOptimization.Enabled := Value;
+  GroupBoxOptions.Enabled := Value;
+  GroupBoxResample.Enabled := Value;
+  GroupBoxVBRMaxBitrate.Enabled := Value;
+  GroupBoxVBRQuality.Enabled := Value;
+  LabelABRTarget.Enabled := Value;
+  LabelATH.Enabled := Value;
+  LabelBitrate.Enabled := Value;
+  LabelFileBig.Enabled := Value;
+  LabelFileSmall.Enabled := Value;
+  LabelQualityHigh.Enabled := Value;
+  LabelQualityLow.Enabled := Value;
+  LabelVbrHelp.Enabled := Value;
+  LabelVbrMaxBitrate.Enabled := Value;
+  LabelqLevel.Enabled := Value;
+  SpinEditVBRABRTargetBitrate.Enabled := Value;
+  SpinEditVBRQuality.Enabled := Value;
+  TrackBarBitrate.Enabled := Value;
+  TrackBarVbrMaxBitrate.Enabled := Value;
+
+  //-- adjust colors of GroupBoxes
+  if Value then
+    MyColor := clWindowText
+  else
+    MyColor := clGrayText;
+
+  GroupBoxBitrate.Font.Color := MyColor;
+  GroupBoxFlags.Font.Color := MyColor;
+  GroupBoxHighpass.Font.Color := MyColor;
+  GroupBoxLowpass.Font.Color := MyColor;
+  GroupBoxMode.Font.Color := MyColor;
+  GroupBoxOptimization.Font.Color := MyColor;
+  GroupBoxOptions.Font.Color := MyColor;
+  GroupBoxResample.Font.Color := MyColor;
+  GroupBoxVBRMaxBitrate.Font.Color := MyColor;
+  GroupBoxVBRQuality.Font.Color := MyColor;
+
+  //-- Set BOLD TEXT if OnlyUseCustomOptions is checked
+  if not Value then
+    CheckBoxOnlyCustomOptions.Font.Style := CheckBoxOnlyCustomOptions.Font.Style + [fsBold]
+  else
+    CheckBoxOnlyCustomOptions.Font.Style := CheckBoxOnlyCustomOptions.Font.Style - [fsBold];
 end;
 
 end.

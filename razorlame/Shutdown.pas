@@ -37,12 +37,15 @@ Var
 
 Implementation
 
-uses ResStr;
+uses UtilFuncs, ResStr, Globals;
 
 {$R *.DFM}
 
 Procedure TFormShutdown.FormCreate(Sender: TObject);
 Begin
+  //-- Set selected font
+  SetFont(Self, DESIGN_FONT, Global.SelectedFont);
+  FixDPI(self, 96);
   FiTimeLeft := 30;
   LabelTimeOut.Caption := Format(LABEL_TIMEOUT, [FiTimeLeft]);
   TimerShutdown.enabled := true;

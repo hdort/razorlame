@@ -44,18 +44,17 @@ type
     BevelHistogram: TBevel;
     ImageHistogram: TImage;
     Splitter: TSplitter;
+    CheckBoxDelSource: TCheckBox;
     LabelVersion: TLabel;
-    ButtonPause: TButton;
-    ButtonSkip: TButton;
+    BevelBottomLine: TBevel;
     procedure FormCreate(Sender: TObject);
     procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
     procedure ButtonTrayClick(Sender: TObject);
     procedure ButtonHistogramClick(Sender: TObject);
     procedure FormResize(Sender: TObject);
     procedure SplitterMoved(Sender: TObject);
-    procedure ButtonPauseClick(Sender: TObject);
-    procedure ButtonCancelClick(Sender: TObject);
-    procedure ButtonSkipClick(Sender: TObject);
+    procedure CheckBoxDelSourceClick(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
   private
     { Private declarations }
     procedure ResetFormControls;
@@ -63,7 +62,6 @@ type
   public
     { Public declarations }
     ExternalClosed: Boolean;
-    SkipRequest: Boolean;
     procedure DrawHistogram;
   end;
 
@@ -78,11 +76,26 @@ uses UtilFuncs, Globals, ResStr, Main, About;
 
 procedure TFormProgress.ResetFormControls;
 begin
-  PanelHistogram.Hide;
-  ImageHistogram.Hide;
-  Splitter.Hide;
-  ButtonHistogram.Enabled := false;
-  Width := Width - BevelHistogram.Width - 8 - Splitter.Width;
+  //todo: re-positoning won't work yet...
+  //todo: resizing won't work properly as well. Idea: safe state with/without histogram seperately?
+  //if not RepositionForm(PROG_FORM_SECTION, Self) then
+  //Self.Position := poOwnerFormCenter;
+
+  if not IniReadBool(PROG_FORM_SECTION, 'ShowHistogram', false) then
+  begin
+    PanelHistogram.Hide;
+    ImageHistogram.Hide;
+    Splitter.Hide;
+    ButtonHistogram.Enabled := false;
+    Width := Width - BevelHistogram.Width - 8 - Splitter.Width;
+  end
+  else
+  begin
+    ButtonHistogram.Caption := 'Hide &histogram';
+    //liWidth := IniReadInteger(PROG_FORM_SECTION, 'PanelHistogramWidth', PanelHistogram.Width);
+    PanelHistogram.Width := ClientWidth - PanelStatus.Constraints.MinWidth;
+  end;
+
   ProgressBarStatus.Position := 0;
   ProgressBarBatch.Position := 0;
   LabelStatus.Caption := ID_STATUS + '0%';
@@ -93,18 +106,42 @@ begin
   LabelBatchEstimated.Caption := '';
   LabelWorking.Caption := Format(ID_WORKING, [0, 0, '']);
   LabelOutput.Caption := ID_OUTPUT;
-  LabelStopWhenDone.Visible := false;
   LabelVersion.Caption := '';
+  LabelStopWhenDone.Visible := false;
+  CheckBoxDelSource.Checked := MP3Settings.DeleteFileAfterProcessing;
 end;
 
 procedure TFormProgress.FormCreate(Sender: TObject);
+var
+  liLeft, liWidth: integer;
 begin
+  //-- Set selected font
+  SetFont(Self, DESIGN_FONT, Global.SelectedFont);
   //-- do some init stuff for controls on the form
+  FixDPI(self, 96);
+  //-- adjust the middle labels for fonts other than 96 dpi
+  if Screen.PixelsPerInch <> 96 then
+  begin
+    liLeft := LabelStatusRemainingLabel.Left + LabelStatusRemainingLabel.Width + 4;
+    liWidth := LabelStatus.Left - 8 - liLeft;
+    LabelStatusRemaining.Left := liLeft;
+    LabelBatchRemaining.Left := liLeft;
+    LabelBatchElapsed.Left := liLeft;
+    LabelBatchEstimated.Left := liLeft;
+    LabelStatusRemaining.Width := liWidth;
+    LabelBatchRemaining.Width := liWidth;
+    LabelBatchElapsed.Width := liWidth;
+    LabelBatchEstimated.Width := liWidth;
+    //-- constraints
+    PanelStatus.Constraints.MinHeight := (PanelStatus.Constraints.MinHeight * Screen.PixelsPerInch + 96 div 2) div 96;
+    PanelStatus.Constraints.MinWidth := (PanelStatus.Constraints.MinWidth * Screen.PixelsPerInch + 96 div 2) div 96;
+    PanelHistogram.Constraints.MinWidth := (PanelHistogram.Constraints.MinWidth * Screen.PixelsPerInch + 96 div 2) div 96;
+  end;
+
   ProgressBarStatus.Max := 1000;
   ProgressBarBatch.Max := 1000;
   ResetFormControls;
   ExternalClosed := false;
-  SkipRequest := false;
 end;
 
 procedure TFormProgress.FormCloseQuery(Sender: TObject;
@@ -115,7 +152,6 @@ begin
   CanClose := true;
   if not ExternalClosed then
   begin
-    ModalResult := mrCancel;
     liResult := MyMsgDlg(MSG_ABORTENCODING, MSG_QUESTION, mtConfirmation,
       mbYesNoCancel, [BTN_NOW, BTN_DONE]);
 
@@ -128,11 +164,11 @@ begin
     //-- the messagebox, close the form anyway,
     //-- no matter what the user answered to the question
     if ExternalClosed then
+    begin
       CanClose := true;
+      ModalResult := mrCancel;
+    end;
   end;
-
-  if CanClose then
-    PostMessage(FormMain.handle, WM_PROGRESS_CLOSING, Integer(ModalResult = mrOK), 0);
 end;
 
 procedure TFormProgress.ButtonTrayClick(Sender: TObject);
@@ -178,6 +214,7 @@ begin
   end;
 end;
 
+(*
 procedure TFormProgress.DrawHistogram;
 var
   liMax, liHeight, liBar, i, liValue, liTextHeight: Integer;
@@ -231,6 +268,7 @@ begin
     MyBitmap.Free;
   end;
 end;
+*)
 
 procedure TFormProgress.FormResize(Sender: TObject);
 begin
@@ -242,29 +280,123 @@ begin
   DrawHistogram;
 end;
 
-procedure TFormProgress.ButtonPauseClick(Sender: TObject);
+procedure TFormProgress.CheckBoxDelSourceClick(Sender: TObject);
 begin
-  if ButtonPause.Caption = 'Pause' then
-  begin
-    ButtonPause.Caption := 'Resume';
-    FormMain.SuspendLame(TRUE);
-  end
-  else
-  begin
-    ButtonPause.Caption := 'Pause';
-    FormMain.SuspendLame(FALSE);
+  MP3Settings.DeleteFileAfterProcessing := CheckBoxDelSource.Checked;
+end;
+
+procedure TFormProgress.FormDestroy(Sender: TObject);
+begin
+  try
+    RegisterFormPosition(PROG_FORM_SECTION, Self);
+    StoreInIni(PROG_FORM_SECTION, 'ShowHistogram', ImageHistogram.Visible);
+    StoreInIni(PROG_FORM_SECTION, 'PanelHistogramWidth', PanelHistogram.Width);
+  except
+    on E: Exception do
+    begin
+      Application.ShowException(E); //-- no matter what happens, close this form
+      exit;
+    end;
   end;
 end;
 
 
-procedure TFormProgress.ButtonCancelClick(Sender: TObject);
-begin
-  Close;
-end;
+procedure TFormProgress.DrawHistogram;
+var
+  liMax, liHeight, liBar, i, liSSValue, liMSValue, liTextHeight: Integer;
+  lfWidth: Double;
+  lsValue: string;
+  MyBitmap: TBitmap;
+  lbLastBar: Boolean;
 
-procedure TFormProgress.ButtonSkipClick(Sender: TObject);
+  procedure DrawBar;
+  var
+    x, y, x2, y2, liTextWidth: Integer;
+  begin
+    //-- claculate upper left point of bar
+    x := Round(lfWidth * liBar);
+    y := liHeight - Round(liHeight * ((liMSValue + liSSValue) / liMax));
+    y2 := y;
+
+    if lbLastBar then
+      x2 := MyBitmap.Width
+    else
+      x2 := Round(lfWidth * (liBar + 1)) + 1;
+
+    //-- draw stereo types if available
+    if (liMSValue > 0) and (liSSValue > 0) then
+    begin
+      MyBitmap.Canvas.Brush.Color := Global.MSColor; //$00184302 //$007BC7EF
+      y2 := liHeight - Round(liHeight * ((liMSValue) / liMax));
+      MyBitmap.Canvas.FillRect(Rect(x, y, x2, y2));
+    end;
+
+    MyBitmap.Canvas.Brush.Color := Global.LRColor; //$00E4F6FE;
+
+    //-- draw the bar
+    MyBitmap.Canvas.FillRect(Rect(x, y2, x2, liHeight));
+    //-- draw a black border around it
+    MyBitmap.Canvas.Brush.Color := clBlack;
+    MyBitmap.Canvas.FrameRect(Rect(x, y, x2, liHeight));
+
+    //-- print the bitrate centered at the bottom
+    MyBitmap.Canvas.Brush.Color := clBtnFace;
+    liTextWidth := MyBitmap.Canvas.TextWidth(Trim(lsValue));
+    //MyBitmap.Canvas.TextOut(x + Round(lfWidth / 2) - (liTextWidth div 2), y - liTextHeight, Trim(lsValue));
+    MyBitmap.Canvas.TextOut(x + Round(lfWidth / 2) - (liTextWidth div 2), liHeight + 4, Trim(lsValue));
+  end;
+
 begin
-  SkipRequest := true;
+  if Global.BRHistogram.Count = 0 then exit;
+  MyBitmap := TBitmap.Create;
+  try
+    //-- Draw the bitrate histogram ------
+    //-- initialize bitmap
+    MyBitmap.Width := ImageHistogram.Width;
+    MyBitmap.Height := ImageHistogram.Height;
+    MyBitmap.Canvas.Pen.Color := clBtnText;
+    MyBitmap.Canvas.Brush.Color := clBtnFace;
+    MyBitmap.Canvas.Brush.Style := bsSolid;
+    MyBitmap.Canvas.FillRect(Rect(0, 0, MyBitmap.Width, MyBitmap.Height));
+
+    //-- get the starting values
+    liMax := 67;
+    liTextHeight := MyBitmap.Canvas.TextHeight('Ag');
+    liHeight := MyBitmap.Height;
+    lfWidth := MyBitmap.Width / (Global.BRHistogram.Count {- 1});
+
+    //-- draw zero x axis
+    liHeight := liHeight - 4 - liTextHeight - 4;
+    MyBitmap.Canvas.Pen.Color := clBlack;
+    MyBitmap.Canvas.MoveTo(0, liHeight);
+    MyBitmap.Canvas.LineTo(MyBitmap.Width, liHeight);
+
+    //-- draw each bar
+    for liBar := 0 to Global.BRHistogram.Count - 1 do
+    begin
+      lsValue := Copy(Global.BRHistogram[liBar], 1, 3);
+      liSSValue := 0;
+      liMSValue := 0;
+      lbLastBar := liBar = Global.BRHistogram.Count - 1;
+      for i := 1 to Length(Global.BRHistogram[liBar]) do
+      begin
+        if (Global.BRHistogram[liBar][i] = '*') then Inc(liSSValue);
+        if (Global.BRHistogram[liBar][i] = '%') then Inc(liMSValue);
+      end;
+      DrawBar;
+    end;
+
+    //-- update the image of the form
+    ImageHistogram.Picture.Bitmap.Width := MyBitmap.Width;
+    ImageHistogram.Picture.Bitmap.Height := MyBitmap.Height;
+    ImageHistogram.Canvas.Draw(0, 0, MyBitmap);
+    //MyBitmap.SaveToFile(Format('%.3d.bmp', [FDebugCount]));
+    //Global.BRHistogram.SaveToFile(Format('%.3d.txt', [FDebugCount]));
+    //Inc(FDebugCount);
+    //ImageHistogram.Canvas.CopyRect(Rect(0, 0, MyBitmap.Width, MyBitmap.Height), MyBitmap.Canvas, Rect(0, 0, MyBitmap.Width, MyBitmap.Height));
+  finally
+    MyBitmap.Free;
+  end;
 end;
 
 end.
