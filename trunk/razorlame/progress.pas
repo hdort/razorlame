@@ -1,4 +1,4 @@
-(* (c) Copyright 2000,2001 - Holger Dors
+(* (c) Copyright 2000-2003 - Holger Dors
    =======================================
 
    This file is part of RazorLame,
@@ -55,6 +55,7 @@ type
     procedure SplitterMoved(Sender: TObject);
     procedure CheckBoxDelSourceClick(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
+    procedure FormShow(Sender: TObject);
   private
     { Private declarations }
     procedure ResetFormControls;
@@ -78,8 +79,8 @@ procedure TFormProgress.ResetFormControls;
 begin
   //todo: re-positoning won't work yet...
   //todo: resizing won't work properly as well. Idea: safe state with/without histogram seperately?
-  //if not RepositionForm(PROG_FORM_SECTION, Self) then
-  //Self.Position := poOwnerFormCenter;
+  if not RepositionForm(PROG_FORM_SECTION, Self) then
+    Self.Position := poOwnerFormCenter;
 
   if not IniReadBool(PROG_FORM_SECTION, 'ShowHistogram', false) then
   begin
@@ -92,8 +93,8 @@ begin
   else
   begin
     ButtonHistogram.Caption := 'Hide &histogram';
-    //liWidth := IniReadInteger(PROG_FORM_SECTION, 'PanelHistogramWidth', PanelHistogram.Width);
-    PanelHistogram.Width := ClientWidth - PanelStatus.Constraints.MinWidth;
+    PanelHistogram.Width := IniReadInteger(PROG_FORM_SECTION, 'PanelHistogramWidth', PanelHistogram.Width);
+    //PanelHistogram.Width := ClientWidth - PanelStatus.Constraints.MinWidth;
   end;
 
   ProgressBarStatus.Position := 0;
@@ -140,7 +141,6 @@ begin
 
   ProgressBarStatus.Max := 1000;
   ProgressBarBatch.Max := 1000;
-  ResetFormControls;
   ExternalClosed := false;
 end;
 
@@ -397,6 +397,11 @@ begin
   finally
     MyBitmap.Free;
   end;
+end;
+
+procedure TFormProgress.FormShow(Sender: TObject);
+begin
+  ResetFormControls;
 end;
 
 end.
