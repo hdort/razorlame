@@ -1,4 +1,4 @@
-(* (c) Copyright 2000-2003  -  Holger Dors
+(* (c) Copyright 2000-2005  -  Holger Dors
    =======================================
 
    This file is part of RazorLame,
@@ -24,7 +24,7 @@ type
     PageControlOptions: TPageControl;
     TabSheetGeneral: TTabSheet;
     TabSheetAdvanced: TTabSheet;
-    TabSheetExpert: TTabSheet;
+    TabSheetPresets: TTabSheet;
     TabSheetAudioProcessing: TTabSheet;
     GroupBoxBitrate: TGroupBox;
     LabelQualityLow: TLabel;
@@ -33,19 +33,10 @@ type
     LabelFileSmall: TLabel;
     LabelFileBig: TLabel;
     TrackBarBitrate: TTrackBar;
-    GroupBoxOutputDir: TGroupBox;
-    EditOutputDir: TEdit;
-    GroupBoxOptions: TGroupBox;
-    CheckBoxCRC: TCheckBox;
-    GroupBoxFlags: TGroupBox;
-    CheckBoxCopy: TCheckBox;
-    CheckBoxCopyright: TCheckBox;
     TabSheetVBR: TTabSheet;
     CheckBoxVBR: TCheckBox;
     GroupBoxMode: TGroupBox;
     ComboBoxMode: TComboBox;
-    GroupBoxOptimization: TGroupBox;
-    ComboBoxOptimization: TComboBox;
     GroupBoxVBRMaxBitrate: TGroupBox;
     TrackBarVbrMaxBitrate: TTrackBar;
     LabelVbrMaxBitrate: TLabel;
@@ -61,41 +52,61 @@ type
     GroupBoxLowpass: TGroupBox;
     CheckBoxLowpassFreq: TCheckBox;
     CheckBoxLowpassWidth: TCheckBox;
-    SpeedButtonOutputDir: TSpeedButton;
     dfsBrowseDirectoryDlgOutputDir: TdfsBrowseDirectoryDlg;
     EditHighpassFreq: TEdit;
     EditHighpassWidth: TEdit;
     EditLowpassFreq: TEdit;
     EditLowpassWidth: TEdit;
-    ComboBoxATH: TComboBox;
-    LabelATH: TLabel;
-    CheckBoxDifferentBlockTypes: TCheckBox;
-    CheckBoxDisableFiltering: TCheckBox;
-    CheckBoxNoRes: TCheckBox;
-    CheckBoxNoShort: TCheckBox;
-    CheckBoxISO: TCheckBox;
     CheckBoxVBRStrictMin: TCheckBox;
-    EditCustomOptions: TEdit;
-    LabelCustomOptions: TLabel;
-    CheckBoxOnlyCustomOptions: TCheckBox;
-    GroupBoxFiling: TGroupBox;
-    CheckBoxDeleteFileAfterProcessing: TCheckBox;
     CheckBoxVBRUseABR: TCheckBox;
     LabelABRTarget: TLabel;
     SpinEditVBRABRTargetBitrate: TSpinEdit;
-    RadioButtonInputDir: TRadioButton;
-    RadioButtonOutputDir: TRadioButton;
     PanelLameOptions: TPanel;
     EditLameOptions: TEdit;
     LabelLameOptions: TLabel;
-    ComboBoxqLevel: TComboBox;
-    LabelqLevel: TLabel;
     Panel2: TPanel;
     LabelDescription: TLabel;
     EditDescription: TEdit;
     ButtonSaveOptions: TButton;
     ButtonLoadOptions: TButton;
     SaveDialogLameOptions: TSaveDialog;
+    GroupBoxOptimization: TGroupBox;
+    ComboBoxOptimization: TComboBox;
+    GroupBoxFlags: TGroupBox;
+    CheckBoxCopy: TCheckBox;
+    CheckBoxCopyright: TCheckBox;
+    GroupBoxPresets: TGroupBox;
+    PresetVBR: TRadioButton;
+    PresetVBRLines: TComboBox;
+    PresetABR: TRadioButton;
+    PresetABRLines: TComboBox;
+    PresetCBR: TRadioButton;
+    PresetCBRLines: TComboBox;
+    CheckBoxBR: TCheckBox;
+    SpinEditBR: TSpinEdit;
+    GroupBoxOptions: TGroupBox;
+    CheckBoxCRC: TCheckBox;
+    CheckBoxDifferentBlockTypes: TCheckBox;
+    CheckBoxDisableFiltering: TCheckBox;
+    CheckBoxNoRes: TCheckBox;
+    CheckBoxNoShort: TCheckBox;
+    CheckBoxISO: TCheckBox;
+    LabelATH: TLabel;
+    ComboBoxATH: TComboBox;
+    LabelqLevel: TLabel;
+    ComboBoxqLevel: TComboBox;
+    LabelCustomOptions: TLabel;
+    EditCustomOptions: TEdit;
+    CheckBoxOnlyCustomOptions: TCheckBox;
+    CheckBoxUsePresets: TCheckBox;
+    TabSheet1: TTabSheet;
+    GroupBoxOutputDir: TGroupBox;
+    SpeedButtonOutputDir: TSpeedButton;
+    EditOutputDir: TEdit;
+    RadioButtonInputDir: TRadioButton;
+    RadioButtonOutputDir: TRadioButton;
+    GroupBoxFiling: TGroupBox;
+    CheckBoxDeleteFileAfterProcessing: TCheckBox;
     procedure TrackBarBitrateChange(Sender: TObject);
     procedure TrackBarVbrMaxBitrateChange(Sender: TObject);
     procedure CheckBoxVBRClick(Sender: TObject);
@@ -113,6 +124,8 @@ type
     procedure ButtonSaveOptionsClick(Sender: TObject);
     procedure ButtonLoadOptionsClick(Sender: TObject);
     procedure CheckBoxOnlyCustomOptionsClick(Sender: TObject);
+    procedure PresetModeClick(Sender: TObject);
+    procedure CheckBoxUsePresetsClick(Sender: TObject);
   private
     { Private declarations }
     FOldOnIdle: TIdleEvent;
@@ -120,6 +133,8 @@ type
     procedure SetCustomOnly(Value: boolean);
     procedure UpdateABRView;
     procedure UpdateVBRView;
+    procedure UpdatePresetView;
+    procedure SetUsePresets(Value: boolean);
   public
     { Public declarations }
     //-- SetOptions sets up the dialog according to Globals
@@ -143,6 +158,27 @@ begin
   //-- Set chosen Options in the dialog
   with MP3Settings do
   begin
+    //-- Alt-presets
+    CheckBoxUsePresets.Checked := UsePresets;
+    PresetVBR.Enabled := UsePresets;
+    PresetABR.Enabled := UsePresets;
+    PresetCBR.Enabled := UsePresets;
+    PresetVBR.Checked := (PresetMode = pmVBR);
+    PresetABR.Checked := (PresetMode = pmABR);
+    PresetCBR.Checked := (PresetMode = pmCBR);
+    PresetVBRLines.ItemIndex := PresetVBRItem;
+    PresetABRLines.ItemIndex := PresetABRItem;
+    PresetCBRLines.ItemIndex := PresetCBRItem;
+    CheckBoxBR.Checked := PresetCustomABR;
+    CheckBoxBR.Enabled := UsePresets and (PresetMode = pmABR);
+    SpinEditBR.Value := PresetCustomABRValue;
+    SpinEditBR.Enabled := (UsePresets and (PresetMode = pmABR)) and PresetCustomABR;
+    PresetVBRLines.Enabled := UsePresets and (PresetMode = pmVBR);
+    if (not PresetCustomABR) then
+      PresetABRLines.Enabled := UsePresets and (PresetMode = pmABR)
+    else PresetABRLines.Enabled := false;
+    PresetCBRLines.Enabled := UsePresets and (PresetMode = pmCBR);
+
     //-- Description
     EditDescription.Text := Description;
 
@@ -209,21 +245,27 @@ begin
     ComboBoxqLevel.ItemIndex := qLevel + 1;
 
     //-- if CheckBoxOnlyCustomOptions is checked, make that tab first!
-    if CheckBoxOnlyCustomOptions.checked then PageControlOptions.ActivePageIndex := 3;
+    if CheckBoxOnlyCustomOptions.Checked then PageControlOptions.ActivePageIndex := 4;
 
-    //-- Audio Processing
+    //-- Audio Processing     ** Edited: larswes Oct 31 2004 **
     ComboBoxResample.Items.IndexOfObject(TObject(Ord(ResampleFreq)));
     ComboBoxResample.ItemIndex := ComboBoxResample.Items.IndexOfObject(TObject(Ord(ResampleFreq)));
     //ComboBoxResample.ItemIndex := Ord(ResampleFreq);
 
     CheckBoxHighpassFreq.Checked := HighpassEnabled;
+    EditHighpassFreq.Enabled := HighpassEnabled and not (UsePresets or OnlyCustomOptions);
     EditHighpassFreq.Text := FloatToStr(HighpassFreq); //FloatToStrF(HighpassFreq, ffFixed, 4,2);
+    CheckBoxHighpassWidth.Enabled := HighpassEnabled and not (UsePresets or OnlyCustomOptions);
     CheckBoxHighpassWidth.Checked := HighWidthEnabled;
+    EditHighpassWidth.Enabled := HighWidthEnabled and not (UsePresets or OnlyCustomOptions);
     EditHighpassWidth.Text := FloatToStr(HighpassWidth);
 
     CheckBoxLowpassFreq.Checked := LowpassEnabled;
+    EditLowpassFreq.Enabled := LowpassEnabled and not (UsePresets or OnlyCustomOptions);
     EditLowpassFreq.Text := FloatToStr(LowpassFreq);
+    CheckBoxLowpassWidth.Enabled := LowpassEnabled and not (UsePresets or OnlyCustomOptions);
     CheckBoxLowpassWidth.Checked := LowWidthEnabled;
+    EditLowpassWidth.Enabled := LowWidthEnabled and not (UsePresets or OnlyCustomOptions);
     EditLowpassWidth.Text := FloatToStr(LowpassWidth);
   end;
 end;
@@ -233,6 +275,19 @@ begin
   //-- Get chosen Options FROM the dialog
   with MP3Settings do
   begin
+    //-- Alt-presets
+    UsePresets := CheckBoxUsePresets.Checked;
+    if PresetVBR.Checked then PresetMode := pmVBR;
+    if PresetABR.Checked then PresetMode := pmABR;
+    if PresetCBR.Checked then PresetMode := pmCBR;
+
+    PresetVBRItem := PresetVBRLines.ItemIndex;
+    PresetABRItem := PresetABRLines.ItemIndex;
+    PresetCBRItem := PresetCBRLines.ItemIndex;
+
+    PresetCustomABR:= CheckBoxBR.Checked;
+    PresetCustomABRValue:= SpinEditBR.Value;
+
     //-- Description
     Description := EditDescription.Text;
 
@@ -474,58 +529,73 @@ begin
 end;
 
 procedure TFormLameOptions.SetCustomOnly(Value: boolean);
+//  ** Edited: larswes Oct 31 2004 **
 var
   MyColor: TColor;
 begin
-  CheckBoxCRC.Enabled := Value;
-  CheckBoxCopy.Enabled := Value;
-  CheckBoxCopyright.Enabled := Value;
-  CheckBoxDifferentBlockTypes.Enabled := Value;
-  CheckBoxDisableFiltering.Enabled := Value;
-  CheckBoxHighpassFreq.Enabled := Value;
-  CheckBoxHighpassWidth.Enabled := Value;
-  CheckBoxISO.Enabled := Value;
-  CheckBoxLowpassFreq.Enabled := Value;
-  CheckBoxLowpassWidth.Enabled := Value;
-  CheckBoxNoRes.Enabled := Value;
-  CheckBoxNoShort.Enabled := Value;
-  CheckBoxVBR.Enabled := Value;
-  CheckBoxVBRDisableTag.Enabled := Value;
-  CheckBoxVBRStrictMin.Enabled := Value;
-  CheckBoxVBRUseABR.Enabled := Value;
-  ComboBoxATH.Enabled := Value;
-  ComboBoxMode.Enabled := Value;
-  ComboBoxOptimization.Enabled := Value;
-  ComboBoxResample.Enabled := Value;
-  ComboBoxqLevel.Enabled := Value;
-  EditHighpassFreq.Enabled := Value;
-  EditHighpassWidth.Enabled := Value;
-  EditLowpassFreq.Enabled := Value;
-  EditLowpassWidth.Enabled := Value;
-  GroupBoxBitrate.Enabled := Value;
-  GroupBoxFlags.Enabled := Value;
-  GroupBoxHighpass.Enabled := Value;
-  GroupBoxLowpass.Enabled := Value;
-  GroupBoxMode.Enabled := Value;
-  GroupBoxOptimization.Enabled := Value;
-  GroupBoxOptions.Enabled := Value;
-  GroupBoxResample.Enabled := Value;
-  GroupBoxVBRMaxBitrate.Enabled := Value;
-  GroupBoxVBRQuality.Enabled := Value;
-  LabelABRTarget.Enabled := Value;
-  LabelATH.Enabled := Value;
-  LabelBitrate.Enabled := Value;
-  LabelFileBig.Enabled := Value;
-  LabelFileSmall.Enabled := Value;
-  LabelQualityHigh.Enabled := Value;
-  LabelQualityLow.Enabled := Value;
-  LabelVbrHelp.Enabled := Value;
-  LabelVbrMaxBitrate.Enabled := Value;
-  LabelqLevel.Enabled := Value;
-  SpinEditVBRABRTargetBitrate.Enabled := Value;
-  SpinEditVBRQuality.Enabled := Value;
-  TrackBarBitrate.Enabled := Value;
-  TrackBarVbrMaxBitrate.Enabled := Value;
+  if not Value then
+  begin
+    CheckBoxCRC.Enabled := Value;
+    CheckBoxCopy.Enabled := Value;
+    CheckBoxCopyright.Enabled := Value;
+    CheckBoxDifferentBlockTypes.Enabled := Value;
+    CheckBoxDisableFiltering.Enabled := Value;
+    CheckBoxHighpassFreq.Enabled := Value;
+    CheckBoxHighpassWidth.Enabled := Value and CheckBoxHighpassFreq.Checked;
+    CheckBoxISO.Enabled := Value;
+    CheckBoxLowpassFreq.Enabled := Value;
+    CheckBoxLowpassWidth.Enabled := Value and CheckBoxLowpassFreq.Checked;
+    CheckBoxNoRes.Enabled := Value;
+    CheckBoxNoShort.Enabled := Value;
+    CheckBoxVBR.Enabled := Value;
+    CheckBoxVBRDisableTag.Enabled := Value;
+    CheckBoxVBRStrictMin.Enabled := Value;
+    CheckBoxVBRUseABR.Enabled := Value;
+    ComboBoxATH.Enabled := Value;
+    ComboBoxMode.Enabled := Value;
+    ComboBoxOptimization.Enabled := Value;
+    ComboBoxResample.Enabled := Value;
+    ComboBoxqLevel.Enabled := Value;
+    EditHighpassFreq.Enabled := Value and CheckBoxHighpassFreq.Checked;
+    EditHighpassWidth.Enabled := CheckBoxHighpassWidth.Enabled and CheckBoxHighpassWidth.Checked;
+    EditLowpassFreq.Enabled := Value and CheckBoxLowpassFreq.Checked;
+    EditLowpassWidth.Enabled := CheckBoxLowpassWidth.Enabled and CheckBoxLowpassWidth.Checked;
+    GroupBoxBitrate.Enabled := Value;
+    GroupBoxFlags.Enabled := Value;
+    GroupBoxHighpass.Enabled := Value;
+    GroupBoxLowpass.Enabled := Value;
+    GroupBoxMode.Enabled := Value;
+    GroupBoxOptimization.Enabled := Value;
+    GroupBoxOptions.Enabled := Value;
+    GroupBoxResample.Enabled := Value;
+    GroupBoxVBRMaxBitrate.Enabled := Value;
+    GroupBoxVBRQuality.Enabled := Value;
+    GroupBoxPresets.Enabled := Value;
+    LabelABRTarget.Enabled := Value;
+    LabelATH.Enabled := Value;
+    LabelBitrate.Enabled := Value;
+    LabelFileBig.Enabled := Value;
+    LabelFileSmall.Enabled := Value;
+    LabelQualityHigh.Enabled := Value;
+    LabelQualityLow.Enabled := Value;
+    LabelVbrHelp.Enabled := Value;
+    LabelVbrMaxBitrate.Enabled := Value;
+    LabelqLevel.Enabled := Value;
+    SpinEditVBRABRTargetBitrate.Enabled := Value;
+    SpinEditVBRQuality.Enabled := Value;
+    TrackBarBitrate.Enabled := Value;
+    TrackBarVbrMaxBitrate.Enabled := Value;
+  end;
+
+  CheckBoxUsePresets.Enabled := Value;
+  PresetVBR.Enabled := Value;
+  PresetABR.Enabled := Value;
+  PresetCBR.Enabled := Value;
+  CheckBoxBR.Enabled := Value;
+  SpinEditBR.Enabled := Value;
+  PresetVBRLines.Enabled := Value;
+  PresetABRLines.Enabled := Value;
+  PresetCBRLines.Enabled := Value;
 
   //-- adjust colors of GroupBoxes
   if Value then
@@ -543,6 +613,7 @@ begin
   GroupBoxResample.Font.Color := MyColor;
   GroupBoxVBRMaxBitrate.Font.Color := MyColor;
   GroupBoxVBRQuality.Font.Color := MyColor;
+  GroupBoxPresets.Font.Color := MyColor;
 
   //-- Set BOLD TEXT if OnlyUseCustomOptions is checked
   if not Value then
@@ -550,8 +621,13 @@ begin
   else
     CheckBoxOnlyCustomOptions.Font.Style := CheckBoxOnlyCustomOptions.Font.Style - [fsBold];
 
-  //if Value and CheckBoxVBR.Checked then UpdateABRView;
-  if Value then UpdateVBRView;
+  //-- if Value and CheckBoxVBR.Checked then UpdateABRView;
+  if Value then
+  begin
+    UpdateVBRView;
+    UpdatePresetView;
+    SetUsePresets(not CheckBoxUsePresets.Checked);
+  end;
 end;
 
 procedure TFormLameOptions.UpdateABRView;
@@ -603,6 +679,125 @@ begin
     LabelABRTarget.Enabled := false;
     SpinEditVBRABRTargetBitrate.Enabled := false;
   end;
+end;
+
+procedure TFormLameOptions.UpdatePresetView;
+begin
+  PresetVBR.Enabled := CheckBoxUsePresets.Checked;
+  PresetABR.Enabled := CheckBoxUsePresets.Checked;
+  PresetCBR.Enabled := CheckBoxUsePresets.Checked;
+  CheckBoxBR.Enabled := CheckBoxUsePresets.Checked and PresetABR.Checked;
+  SpinEditBR.Enabled := (CheckBoxUsePresets.Checked and PresetABR.Checked) and CheckBoxBR.Checked;
+  PresetVBRLines.Enabled := CheckBoxUsePresets.Checked and PresetVBR.Checked;
+  if CheckBoxBR.Checked then PresetABRLines.Enabled := false
+    else PresetABRLines.Enabled := CheckBoxUsePresets.Checked and PresetABR.Checked;
+  PresetCBRLines.Enabled := CheckBoxUsePresets.Checked and PresetCBR.Checked;
+  if CheckBoxUsePresets.Checked then
+  begin
+    if PresetVBR.Checked then
+      EditDescription.Text := 'VBR ' + PresetVBRLines.Items[PresetVBRLines.ItemIndex];
+    if PresetABR.Checked then
+      if CheckBoxBR.Checked then
+        EditDescription.Text := 'ABR ' +  IntToStr(SpinEditBR.Value) + ' kbps'
+      else
+        EditDescription.Text := 'ABR ' + PresetABRLines.Items[PresetABRLines.ItemIndex];
+    if PresetCBR.Checked then
+      EditDescription.Text := 'CBR ' + PresetCBRLines.Items[PresetCBRLines.ItemIndex];
+  end
+  else
+    EditDescription.Text := '';
+end;
+
+procedure TFormLameOptions.PresetModeClick(Sender: TObject);
+begin
+  UpdatePresetView;
+end;
+
+procedure TFormLameOptions.CheckBoxUsePresetsClick(Sender: TObject);
+begin
+  SetUsePresets(not CheckBoxUsePresets.Checked);
+  UpdatePresetView;
+end;
+
+procedure TFormLameOptions.SetUsePresets(Value: boolean);
+var
+  MyColor: TColor;
+begin
+  CheckBoxCRC.Enabled := Value;
+  CheckBoxCopy.Enabled := Value;
+  CheckBoxCopyright.Enabled := Value;
+  CheckBoxDifferentBlockTypes.Enabled := Value;
+  CheckBoxDisableFiltering.Enabled := Value;
+  CheckBoxHighpassFreq.Enabled := Value;
+  CheckBoxHighpassWidth.Enabled := Value and CheckBoxHighpassFreq.Checked;
+  CheckBoxISO.Enabled := Value;
+  CheckBoxLowpassFreq.Enabled := Value;
+  CheckBoxLowpassWidth.Enabled := Value and CheckBoxLowpassFreq.Checked;
+  CheckBoxNoRes.Enabled := Value;
+  CheckBoxNoShort.Enabled := Value;
+  CheckBoxVBR.Enabled := Value;
+  CheckBoxVBRDisableTag.Enabled := Value;
+  CheckBoxVBRStrictMin.Enabled := Value;
+  CheckBoxVBRUseABR.Enabled := Value;
+  ComboBoxATH.Enabled := Value;
+  ComboBoxMode.Enabled := Value;
+  ComboBoxOptimization.Enabled := Value;
+  ComboBoxResample.Enabled := Value;
+  ComboBoxqLevel.Enabled := Value;
+  EditHighpassFreq.Enabled := Value and CheckBoxHighpassFreq.Checked;
+  EditHighpassWidth.Enabled := CheckBoxHighpassWidth.Enabled and CheckBoxHighpassWidth.Checked;
+  EditLowpassFreq.Enabled := Value and CheckBoxLowpassFreq.Checked;
+  EditLowpassWidth.Enabled := CheckBoxLowpassWidth.Enabled and CheckBoxLowpassWidth.Checked;
+  GroupBoxBitrate.Enabled := Value;
+  GroupBoxFlags.Enabled := Value;
+  GroupBoxHighpass.Enabled := Value;
+  GroupBoxLowpass.Enabled := Value;
+  GroupBoxMode.Enabled := Value;
+  GroupBoxOptimization.Enabled := Value;
+  GroupBoxOptions.Enabled := Value;
+  GroupBoxResample.Enabled := Value;
+  GroupBoxVBRMaxBitrate.Enabled := Value;
+  GroupBoxVBRQuality.Enabled := Value;
+  GroupBoxPresets.Enabled := not Value;
+  LabelABRTarget.Enabled := Value;
+  LabelATH.Enabled := Value;
+  LabelBitrate.Enabled := Value;
+  LabelFileBig.Enabled := Value;
+  LabelFileSmall.Enabled := Value;
+  LabelQualityHigh.Enabled := Value;
+  LabelQualityLow.Enabled := Value;
+  LabelVbrHelp.Enabled := Value;
+  LabelVbrMaxBitrate.Enabled := Value;
+  LabelqLevel.Enabled := Value;
+  SpinEditVBRABRTargetBitrate.Enabled := Value;
+  SpinEditVBRQuality.Enabled := Value;
+  TrackBarBitrate.Enabled := Value;
+  TrackBarVbrMaxBitrate.Enabled := Value;
+
+  //-- adjust colors of GroupBoxes
+  if Value then
+    MyColor := clWindowText
+  else
+    MyColor := clGrayText;
+
+  GroupBoxBitrate.Font.Color := MyColor;
+  GroupBoxFlags.Font.Color := MyColor;
+  GroupBoxHighpass.Font.Color := MyColor;
+  GroupBoxLowpass.Font.Color := MyColor;
+  GroupBoxMode.Font.Color := MyColor;
+  GroupBoxOptimization.Font.Color := MyColor;
+  GroupBoxOptions.Font.Color := MyColor;
+  GroupBoxResample.Font.Color := MyColor;
+  GroupBoxVBRMaxBitrate.Font.Color := MyColor;
+  GroupBoxVBRQuality.Font.Color := MyColor;
+
+  if Value then
+    GroupBoxPresets.Font.Color := clGrayText
+  else
+    GroupBoxPresets.Font.Color := clWindowText;
+
+  //-- if Value and CheckBoxVBR.Checked then UpdateABRView;
+  if Value then UpdateVBRView;
 end;
 
 end.

@@ -1,4 +1,4 @@
-(* (c) Copyright 2000,2001 - Holger Dors
+(* (c) Copyright 2000-2005  -  Holger Dors
    =======================================
 
    This file is part of RazorLame,
@@ -20,9 +20,8 @@ const
 
   LAME_HOMEPAGE = 'http://www.mp3dev.org/';
   RAZORLAME_HOMEPAGE = 'http://www.dors.de/razorlame/';
-  //RAZORLAME_FORUM = 'http://pub22.ezboard.com/brazorlame';
   RAZORLAME_FORUM = 'http://www.dors.de/razorlame/forum';
-  RAZORLAME_DONATE = 'https://www.paypal.com/xclick/business=holger%40dors.de&item_name=RazorLame&image_url=http%3A//www.dors.de/razorlame/rlpaypallogo.png&no_shipping=1&return=http%3A//www.dors.de/razorlame/&cancel_return=http%3A//www.dors.de/razorlame/';
+  RAZORLAME_DONATE = 'http://www.dors.de/razorlame/donate';
 
   TOOLBAR_SECTION = 'Toolbar';
   LAYOUT_ITEM = 'Layout';
@@ -39,6 +38,7 @@ const
 
 type
 
+  TPresetMode = (pmVBR, pmABR, pmCBR);
   TMp3Flag = (mfCopy, mfCopyright);
   TMp3Flags = set of TMp3Flag;
   TLameMode = (lmStereo, lmJointStereo, lmForcedJointStereo, lmMono, lmDefault);
@@ -83,6 +83,13 @@ type
     DeleteFileAfterProcessing: Boolean;
     UseInputDir: Boolean;
     qLevel: Integer;
+    UsePresets: Boolean;
+    PresetMode: TPresetMode;
+    PresetVBRItem: Integer;
+    PresetABRItem: Integer;
+    PresetCBRItem: Integer;
+    PresetCustomABR: Boolean;
+    PresetCustomABRValue: Integer;
   end;
 
   TGlobalVars = record
@@ -142,6 +149,20 @@ var
     '144', '160', '192', '224', '256', '320');
 
   gsaPriorities: array[0..5] of string;
+
+  VBRPresets: array[0..12] of string
+  = (' --alt-preset extreme', ' --alt-preset standard', ' --alt-preset medium',
+    ' -V 0', ' -V 1', ' -V 2', ' -V 3', ' -V 4', ' -V 5', ' -V 6', ' -V 7', ' -V 8', ' -V 9');
+  ABRPresets: array[0..12] of string
+  = (' --alt-preset 256', ' --alt-preset 224', ' --alt-preset 192', ' --alt-preset 160',
+    ' --alt-preset 128', ' --alt-preset 112', ' --alt-preset 96', ' --alt-preset 80',
+    ' --alt-preset 64', ' --preset voice', ' --preset mw-us', ' --preset lw',
+    ' --preset phone');
+  CBRPresets: array[0..14] of string
+  = (' --alt-preset insane',' --alt-preset cbr 256', ' --alt-preset cbr 224', ' --alt-preset cbr 192',
+    ' --alt-preset cbr 160', ' --alt-preset cbr 128', ' --alt-preset cbr 112', ' --alt-preset cbr 96',
+    ' --alt-preset cbr 80', ' --alt-preset cbr 64', ' --alt-preset cbr 56', ' --alt-preset cbr 48',
+    ' --alt-preset cbr 40', ' --alt-preset cbr 32', ' --alt-preset cbr 16');
 
 implementation
 
