@@ -617,7 +617,7 @@ begin
   begin
     case MyMessageBox(Format(MSG_OUTDIR_DOES_NOT_EXIST, [MP3Settings.OutDir]),
      MSG_QUESTION, MB_ICONEXCLAMATION or MB_YESNOCANCEL) of
-      IDYES:
+      ID_YES:
         if not ForceDirectories(MP3Settings.OutDir) then
         begin
           MyMessageBox(Format(MSG_COULD_NOT_CREATE_OUTDIR, [MP3Settings.OutDir]),
@@ -625,7 +625,7 @@ begin
           exit;
         end;
 
-      IDCANCEL: exit;
+      ID_CANCEL: exit;
     end;
   end;
 
