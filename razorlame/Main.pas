@@ -16,7 +16,7 @@ uses
   Windows, Messages, SysUtils, Classes, Controls, Forms, Dialogs,
   StdCtrls, ComCtrls, ExtCtrls, ToolWin, Menus,
   EnhListView, ImgList, ActnList, Redirect, TrayIcon, SystemImageList,
-  XPMenu;
+  XPMenu, BrowseDr;
 
 const
   WM_ITEM_DELETED = WM_USER + 1;
@@ -56,7 +56,7 @@ type
     MenuItemPopUpDelete: TMenuItem;
     MenuItemPopUpClearList: TMenuItem;
     N5: TMenuItem;
-    MenuItemPopUpChooseFiles: TMenuItem;
+    MenuItemPopUpAddFiles: TMenuItem;
     N6: TMenuItem;
     MenuItemPopUpEncode: TMenuItem;
     MenuItemPopUpOptions: TMenuItem;
@@ -114,6 +114,11 @@ type
     ActionLameOptions: TAction;
     LAMEOptions1: TMenuItem;
     XPMenu: TXPMenu;
+    ActionAddFolder: TAction;
+    dfsBrowseDirectoryDlgAddFolder: TdfsBrowseDirectoryDlg;
+    MenuItemAddFolder: TMenuItem;
+    MenuItemPopupAddFolder: TMenuItem;
+    MenuItemDonate: TMenuItem;
     procedure FormCreate(Sender: TObject);
     procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
     procedure ListViewFilesChange(Sender: TObject; Item: TListItem;
@@ -155,6 +160,8 @@ type
     procedure Documentation1Click(Sender: TObject);
     procedure ActionLameOptionsExecute(Sender: TObject);
     procedure ListViewFilesDblClick(Sender: TObject);
+    procedure ActionAddFolderExecute(Sender: TObject);
+    procedure MenuItemDonateClick(Sender: TObject);
   private
     { Private declarations }
     Redirector: TRedirector;
@@ -305,7 +312,7 @@ begin
   if not FileExists(ChangeFileExt(LowerCase(Application.ExeName), '.dat')) then
   begin
     MyMessageBox(Format(MSG_NO_DAT_FILE, [ChangeFileExt(LowerCase(Application.ExeName), '.dat')]),
-    MSG_ERROR, MB_ICONEXCLAMATION or MB_OK);
+      MSG_ERROR, MB_ICONEXCLAMATION or MB_OK);
     Application.Terminate;
     exit;
   end;
@@ -1231,7 +1238,7 @@ begin
           ProgressForm.LabelBatchRemaining.Caption := FormatDateTime('h:nn:ss', ldtEstimatedTime - ldtElapsedTime);
         end;
 
-         //-- todo: multi-line hint?
+        //-- todo: multi-line hint?
         with Global do
           TrayIcon.ToolTip := Format(TRAY_HINT, [CurrentFile, FilePercent, BatchPercent]);
         Application.Title := '[' + IntToStr(Global.BatchPercent) + '%] ' + APP_TITLE;
@@ -1538,7 +1545,7 @@ begin
             Left := Self.Left + (Self.Width - Width) div 2;
             MemoLog.Lines.Assign(Global.Log);
             ShowModal;
-              //-- Save the log
+            //-- Save the log
             Global.Log.SaveToFile(ChangeFileExt(Application.Exename, '.log'));
           end;
         finally
@@ -1795,7 +1802,7 @@ begin
           ProgressForm.LabelBatchRemaining.Caption := FormatDateTime('h:nn:ss', ldtEstimatedTime - ldtElapsedTime);
         end;
 
-         //-- todo: multi-line hint?
+        //-- todo: multi-line hint?
         with Global do
           TrayIcon.ToolTip := Format(TRAY_HINT, [CurrentFile, FilePercent, BatchPercent]);
         Application.Title := '[' + IntToStr(Global.BatchPercent) + '%] ' + APP_TITLE;
@@ -2038,6 +2045,17 @@ begin
   //-- execute that file! If we have one!
   if assigned(ListViewFiles.Selected) then
     ShellExecute(HInstance, nil, PChar(IncludeTrailingBackslash(TFileItem(ListViewFiles.ItemFocused.Data).Path) + TFileItem(ListViewFiles.Selected.Data).Filename), nil, nil, SW_SHOW);
+end;
+
+procedure TFormMain.ActionAddFolderExecute(Sender: TObject);
+begin
+  if dfsBrowseDirectoryDlgAddFolder.Execute then
+    AddFolderToList(dfsBrowseDirectoryDlgAddFolder.Selection);
+end;
+
+procedure TFormMain.MenuItemDonateClick(Sender: TObject);
+begin
+  ShellExecute(HInstance, nil, PChar(RAZORLAME_DONATE), nil, nil, SW_SHOW);
 end;
 
 end.

@@ -15,13 +15,14 @@ interface
 uses Windows, Classes, Graphics, ResStr, UtilFuncs;
 
 const
-  RL_VERSION = 'RazorLame 1.1.5';
+  RL_VERSION = 'RazorLame 1.1.6';
   APP_TITLE = 'RazorLame';
 
   LAME_HOMEPAGE = 'http://www.mp3dev.org/';
   RAZORLAME_HOMEPAGE = 'http://www.dors.de/razorlame/';
   //RAZORLAME_FORUM = 'http://pub22.ezboard.com/brazorlame';
   RAZORLAME_FORUM = 'http://www.dors.de/razorlame/forum';
+  RAZORLAME_DONATE = 'https://www.paypal.com/xclick/business=holger%40dors.de&item_name=RazorLame&image_url=http%3A//www.dors.de/razorlame/rlpaypallogo.png&no_shipping=1&return=http%3A//www.dors.de/razorlame/&cancel_return=http%3A//www.dors.de/razorlame/';
 
   TOOLBAR_SECTION = 'Toolbar';
   LAYOUT_ITEM = 'Layout';

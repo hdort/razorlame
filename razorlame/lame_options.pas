@@ -285,7 +285,8 @@ begin
     qLevel := ComboBoxqLevel.ItemIndex - 1;
 
     //-- Audio Processing
-    ResampleFreq := TResampleFreq(Integer(ComboBoxResample.Items.Objects[ComboBoxResample.ItemIndex]));
+    if ComboBoxResample.ItemIndex >= 0 then
+      ResampleFreq := TResampleFreq(Integer(ComboBoxResample.Items.Objects[ComboBoxResample.ItemIndex]));
 
     HighpassEnabled := CheckBoxHighpassFreq.Checked;
     HighpassFreq := StrToFloatDef(EditHighpassFreq.Text, 0);
