@@ -2095,7 +2095,7 @@ begin
   Result := asInputFilePath;
   if MP3Settings.UseInputDir then exit;
   if (Trim(MP3Settings.OutDir) <> '') and DirectoryExists(MP3Settings.OutDir) then
-    Result := MP3Settings.OutDir
+    Result := MP3Settings.OutDir;
 end;
 
 procedure TFormMain.ListViewFilesDblClick(Sender: TObject);
