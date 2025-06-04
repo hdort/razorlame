@@ -357,7 +357,7 @@ begin
   //-- type, ignore it!
   if not IsExtensionAllowed(ExtractFileExt(asFile)) then Exit;
 
-  //-- seperate filename and path
+  //-- separate filename and path
   lsCaption := ExtractFilename(asFile);
   lsPath := ExtractFilePath(asFile);
 
@@ -1010,10 +1010,10 @@ begin
     //-- that's the "old" code for loading the files
     //-- they were originally stored in the INI file
     //-- when some users were hitting the 64 KB border, I decided
-    //-- to store the list seperatly in a *.lst file
+    //-- to store the list separately in a *.lst file
     //-- this code is here only to allow a smooth "migration"
     //-- files aren't stored in the ini file any more
-    //-- so this block could be simplyfied in a later version
+    //-- so this block could be simplified in a later version
 
     //-- Load File list into ListView
     StatusBar.Panels[0].Text := 'Loading files...';
