@@ -897,7 +897,7 @@ begin
   finally
     MyFileList.Free;
   end;
-  //-- erase the old ini section; compatability stuff, see comment under "LoadFileList"
+  //-- erase the old ini section; compatibility stuff, see comment under "LoadFileList"
   with TIniFile.Create(ChangeFileExt(LowerCase(Application.ExeName), '.ini')) do
   try
     //-- First erase the entire section

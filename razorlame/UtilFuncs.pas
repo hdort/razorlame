@@ -613,7 +613,7 @@ function GetFileSize(const FileName: string): Int64;
 var
   SearchRec: TSearchRec;
 begin
-  Result := -1; //-- assume worst cas
+  Result := -1; //-- assume worst case
   if FindFirst(FileName, faAnyFile, SearchRec) = 0 then
   begin
     //Result := SearchRec.Size;

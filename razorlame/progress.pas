@@ -316,7 +316,7 @@ var
   var
     x, y, x2, y2, liTextWidth: Integer;
   begin
-    //-- claculate upper left point of bar
+    //-- calculate upper left point of bar
     x := Round(lfWidth * liBar);
     y := liHeight - Round(liHeight * ((liMSValue + liSSValue) / liMax));
     y2 := y;
