@@ -307,10 +307,9 @@ end;
 
 procedure TRedirector.SetStartSuspended(Value: Boolean);
 begin
-  if (Value = DefaultErrorMode) or not Running then
+  if (Value = FStartSuspended) or not Running then
     FStartSuspended := Value
   else if Running then
-
     Error('Cannot change StartSuspended while process is active');
 end;
 
