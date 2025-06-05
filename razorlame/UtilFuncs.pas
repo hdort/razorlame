@@ -652,7 +652,7 @@ end;
 function DeleteZeroByteFile(const FileName: string): Boolean;
 begin
   Result := false;
-  //-- delete's FileName if it's size is 0!
+  //-- deletes FileName if its size is 0!
   if FileExists(FileName) and (GetFileSize(FileName) = 0) then
     Result := DeleteFile(FileName);
 end;
