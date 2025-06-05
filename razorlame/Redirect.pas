@@ -319,7 +319,7 @@ begin
     FInitialPriority := Value
   else if Running then
 
-    Error('Cannot change InititalPriority while process is active');
+    Error('Cannot change InitialPriority while process is active');
 end;
 
 procedure TRedirector.SetDirectory(Value: string);
