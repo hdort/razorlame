@@ -2092,10 +2092,11 @@ end;
 
 function TFormMain.DetermineOutputPath(const asInputFilePath: string): string;
 begin
-  Result := asInputFilePath;
-  if MP3Settings.UseInputDir then exit;
+  Result := IncludeTrailingBackslash(asInputFilePath);
+  if MP3Settings.UseInputDir then
+    Exit;
   if (Trim(MP3Settings.OutDir) <> '') and DirectoryExists(MP3Settings.OutDir) then
-    Result := MP3Settings.OutDir;
+    Result := IncludeTrailingBackslash(MP3Settings.OutDir);
 end;
 
 procedure TFormMain.ListViewFilesDblClick(Sender: TObject);
