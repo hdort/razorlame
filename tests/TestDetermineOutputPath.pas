@@ -21,11 +21,11 @@ var
 
 function DetermineOutputPath(const asInputFilePath: string): string;
 begin
-  Result := asInputFilePath;
+  Result := IncludeTrailingBackslash(asInputFilePath);
   if MP3Settings.UseInputDir then
     Exit;
   if (Trim(MP3Settings.OutDir) <> '') and DirectoryExists(MP3Settings.OutDir) then
-    Result := MP3Settings.OutDir;
+    Result := IncludeTrailingBackslash(MP3Settings.OutDir);
 end;
 
 type
@@ -33,6 +33,7 @@ type
   published
     procedure TestUseInputDirTrue;
     procedure TestUseInputDirFalseOutDirExists;
+    procedure TestUseInputDirFalseOutDirMissing;
   end;
 
 procedure TDetermineOutputPathTests.TestUseInputDirTrue;
@@ -44,7 +45,7 @@ begin
   MP3Settings.OutDir := '';
   InputPath := '/tmp/inputdir';
   ResultPath := DetermineOutputPath(InputPath);
-  AssertEquals(InputPath, ResultPath);
+  AssertEquals(IncludeTrailingBackslash(InputPath), ResultPath);
 end;
 
 procedure TDetermineOutputPathTests.TestUseInputDirFalseOutDirExists;
@@ -58,10 +59,24 @@ begin
     MP3Settings.OutDir := OutDir;
     InputPath := '/tmp/somewhere';
     ResultPath := DetermineOutputPath(InputPath);
-    AssertEquals(OutDir, ResultPath);
+    AssertEquals(IncludeTrailingBackslash(OutDir), ResultPath);
   finally
     RemoveDir(OutDir);
   end;
+end;
+
+procedure TDetermineOutputPathTests.TestUseInputDirFalseOutDirMissing;
+var
+  InputPath, OutDir, ResultPath: string;
+begin
+  OutDir := GetTempDir + 'razorlame_test_outdir_missing';
+  if DirectoryExists(OutDir) then
+    RemoveDir(OutDir);
+  MP3Settings.UseInputDir := False;
+  MP3Settings.OutDir := OutDir;
+  InputPath := '/tmp/somewhere';
+  ResultPath := DetermineOutputPath(InputPath);
+  AssertEquals(IncludeTrailingBackslash(InputPath), ResultPath);
 end;
 
 begin
